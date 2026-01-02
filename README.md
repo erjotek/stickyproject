@@ -18,11 +18,17 @@
 - [ ] Configure the [CODECOV_TOKEN](https://docs.codecov.com/docs/quick-start) secret for automated test coverage reports on PRs
 
 <!-- Plugin description -->
-This Fancy IntelliJ Platform Plugin is going to be your implementation of the brilliant ideas that you have.
+Sticky Project Directories plugin for JetBrains IDEs.
+Keeps parent directories visible at the top of the Project View when scrolling.
 
-This specific section is a source for the [plugin.xml](/src/main/resources/META-INF/plugin.xml) file which will be extracted by the [Gradle](/build.gradle.kts) during the build process.
+### Features
+- Sticky headers for directories in Project View
+- Works with "Project", "Project Files", and other scopes
+- Respects file color scopes (Background colors)
+- Configurable limit for sticky headers (default: 10)
 
-To keep everything working, do not remove `<!-- ... -->` sections. 
+### Configuration
+Go to **Settings/Preferences | Tools | Sticky Project Directories** to change the maximum number of sticky headers.
 <!-- Plugin description end -->
 
 ## Installation

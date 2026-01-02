@@ -1,4 +1,4 @@
-package com.github.erjotek.stickyproject
+package com.github.erjotek.stickyprojectfolder
 
 import com.intellij.DynamicBundle
 import org.jetbrains.annotations.NonNls
