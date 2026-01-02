@@ -10,9 +10,5 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <postStartupActivity implementation="com.github.erjotek.stickyprojectfolder.startup.MyProjectActivity" />
-        <applicationService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings"/>
-        <projectConfigurable parentId="tools" instance="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
-                             id="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
-                             displayName="Sticky Project Directories"/>
     </extensions>
 </idea-plugin>
