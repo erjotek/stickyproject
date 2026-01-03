@@ -1,8 +1,8 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
-<idea-plugin>
+<idea-plugin require-restart="false">
     <id>com.github.erjotek.stickyprojectfolder</id>
     <name>StickyProjectFolder</name>
-    <vendor>erjotek</vendor>
+    <vendor email="rafal.janiczek@gmail.com" url="https://github.com/erjotek" name="Rafał eRJot Janiczek">Rafał Janiczek</vendor>
 
     <depends>com.intellij.modules.platform</depends>
 
@@ -10,5 +10,9 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <postStartupActivity implementation="com.github.erjotek.stickyprojectfolder.startup.MyProjectActivity" />
+        <applicationService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings"/>
+        <projectConfigurable parentId="tools" instance="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
+                             id="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
+                             displayName="Sticky Project Directories"/>
     </extensions>
 </idea-plugin>

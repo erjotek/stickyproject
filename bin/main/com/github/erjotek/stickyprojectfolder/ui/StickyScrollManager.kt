@@ -8,17 +8,21 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectFileIndex
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.intellij.psi.PsiDirectory
+import com.intellij.psi.PsiDirectoryContainer
+import com.intellij.psi.PsiFileSystemItem
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.FileColorManager
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import com.intellij.psi.PsiElement
-import com.intellij.openapi.vfs.VirtualFile
 import java.awt.*
 import java.awt.event.*
 import javax.swing.*
@@ -50,13 +54,24 @@ class StickyScrollManager(private val project: Project) : Disposable {
         connection.subscribe(ToolWindowManagerListener.TOPIC, object : ToolWindowManagerListener {
             override fun stateChanged(toolWindowManager: ToolWindowManager) {
                 scheduleTryInstall()
+                // Also update bounds when tool window state changes (e.g., closed/opened)
+                ApplicationManager.getApplication().invokeLater({
+                    if (!project.isDisposed) updateBounds()
+                }, project.disposed)
             }
             override fun toolWindowRegistered(id: String) {
                 if (id == ToolWindowId.PROJECT_VIEW) scheduleTryInstall()
             }
         })
         
-        checkTimer = Timer(1000) { tryInstall() }
+        // Timer will catch pane changes (e.g., switching between "Project" and "Project Files")
+        checkTimer = Timer(1000) { 
+            tryInstall()
+            // Periodically check if tool window is still visible
+            ApplicationManager.getApplication().invokeLater({
+                if (!project.isDisposed) updateBounds()
+            }, project.disposed)
+        }
         checkTimer?.start()
     }
 
@@ -84,23 +99,43 @@ class StickyScrollManager(private val project: Project) : Disposable {
         val sp = SwingUtilities.getAncestorOfClass(JScrollPane::class.java, currentTree) as? JScrollPane
         if (sp == null) return
 
-        if ((this.tree != null && this.tree !== currentTree) || (this.scrollPane != null && this.scrollPane !== sp)) {
+        // Always detach and reinstall listeners when tree changes
+        if (this.tree !== currentTree || this.scrollPane !== sp) {
             detach()
+            this.tree = null
+            this.scrollPane = null
+            adjustmentListener = null // Force reinstall of listeners
         }
-
-        val rootPane = SwingUtilities.getRootPane(currentTree) ?: return
-        val targetPane = rootPane.layeredPane 
 
         this.tree = currentTree
         this.scrollPane = sp
         
-        if (stickyComponent == null) {
-            stickyComponent = StickyHeaderComponent(project, currentTree, sp)
+        // Create or reuse sticky component
+        if (stickyComponent == null || stickyComponent!!.getTree() !== currentTree) {
+            stickyComponent?.parent?.remove(stickyComponent)
+            stickyComponent = StickyHeaderComponent(project, currentTree, sp) { updateBounds() }
         }
         
-        if (stickyComponent!!.parent !== targetPane) {
-            stickyComponent!!.parent?.remove(stickyComponent)
-            targetPane.add(stickyComponent!!, JLayeredPane.POPUP_LAYER)
+        // Add to viewport's layered pane to constrain to project view area only
+        val viewport = sp.viewport
+        val targetPane = viewport.parent as? JComponent
+        
+        if (targetPane != null) {
+            // Try to add to scroll pane's layered structure
+            if (stickyComponent!!.parent !== targetPane) {
+                stickyComponent!!.parent?.remove(stickyComponent)
+                targetPane.add(stickyComponent!!, 0) // Add at front
+            }
+        } else {
+            // Fallback to root pane but with strict bounds checking
+            val rootPane = SwingUtilities.getRootPane(currentTree) ?: return
+            val layeredPane = rootPane.layeredPane
+            
+            if (stickyComponent!!.parent !== layeredPane) {
+                stickyComponent!!.parent?.remove(stickyComponent)
+                // Use DEFAULT_LAYER instead of PALETTE_LAYER for lower z-index
+                layeredPane.add(stickyComponent!!, JLayeredPane.DEFAULT_LAYER)
+            }
         }
         
         if (stickyComponent?.isVisible != true) stickyComponent?.isVisible = true
@@ -115,7 +150,7 @@ class StickyScrollManager(private val project: Project) : Disposable {
         if (adjustmentListener == null) {
             val updateAction = { 
                 updateBounds()
-                stickyComponent?.update() 
+                stickyComponent?.update()
             }
             
             val adjListener = AdjustmentListener { updateAction() }
@@ -157,18 +192,32 @@ class StickyScrollManager(private val project: Project) : Disposable {
         val sp = scrollPane ?: return
         val sticky = stickyComponent ?: return
         val viewport = sp.viewport ?: return
+        val currentTree = tree ?: return
 
-        if (!sp.isShowing || !viewport.isShowing) {
+        // Check if tree and scroll pane are actually visible
+        if (!sp.isShowing || !viewport.isShowing || !currentTree.isShowing) {
             sticky.isVisible = false
             return
         }
+        
+        // Check if the tool window is visible
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)
+        if (toolWindow == null || !toolWindow.isVisible) {
+            sticky.isVisible = false
+            return
+        }
+
         sticky.isVisible = true
 
+        val parent = sticky.parent ?: return
+
         try {
-            val pt = SwingUtilities.convertPoint(viewport, 0, 0, sticky.parent)
-            sticky.bounds = Rectangle(pt.x, pt.y, viewport.width, viewport.height)
+            val pt = SwingUtilities.convertPoint(viewport, 0, 0, parent)
+            // Only set bounds to the actual sticky header area, not full viewport height
+            val stickyHeight = sticky.calculateStickyHeight()
+            sticky.bounds = Rectangle(pt.x, pt.y, viewport.width, stickyHeight.coerceAtLeast(0))
         } catch (e: Exception) {
-            // Ignore
+            return
         }
     }
 
@@ -183,7 +232,10 @@ class StickyScrollManager(private val project: Project) : Disposable {
         }
         
         tree?.let { t ->
-            treeModelListener?.let { t.model.removeTreeModelListener(it) }
+            val model = t.model
+            if (model != null) {
+                treeModelListener?.let { model.removeTreeModelListener(it) }
+            }
             treeExpansionListener?.let { t.removeTreeExpansionListener(it) }
         }
 
@@ -206,8 +258,11 @@ class StickyScrollManager(private val project: Project) : Disposable {
 class StickyHeaderComponent(
     private val project: Project,
     private val tree: JTree, 
-    private val scrollPane: JScrollPane
+    private val scrollPane: JScrollPane,
+    private val onBoundsUpdateNeeded: () -> Unit = {}
 ) : JComponent() {
+    
+    fun getTree(): JTree = tree
     
     private var stickyPaths: List<TreePath> = emptyList()
     private var pushOffset: Int = 0
@@ -262,10 +317,11 @@ class StickyHeaderComponent(
     override fun contains(x: Int, y: Int): Boolean {
         if (!isVisible || stickyPaths.isEmpty()) return false
         if (x < 0 || x >= width) return false
+        if (y < 0) return false
         
         val rowHeight = getRowHeight()
         val totalHeight = stickyPaths.size * rowHeight - pushOffset
-        return y < totalHeight
+        return y >= 0 && y < totalHeight
     }
     
     private fun getIndexAt(y: Int): Int {
@@ -290,48 +346,67 @@ class StickyHeaderComponent(
         return if (idx in stickyPaths.indices) stickyPaths[idx] else null
     }
 
-    private fun getRowHeight(): Int = tree.rowHeight.takeIf { it > 0 } ?: JBUI.scale(22)
+    private fun getRowHeight(): Int {
+        val rowHeight = tree.rowHeight
+        if (rowHeight > 0) return rowHeight
+
+        if (tree.rowCount > 0) {
+            val visibleRow = tree.getClosestRowForLocation(0, tree.visibleRect.y)
+            val visibleBounds = if (visibleRow >= 0) tree.getRowBounds(visibleRow) else null
+            if (visibleBounds != null && visibleBounds.height > 0) return visibleBounds.height
+
+            val firstBounds = tree.getRowBounds(0)
+            if (firstBounds != null && firstBounds.height > 0) return firstBounds.height
+        }
+
+        return JBUI.scale(22)
+    }
+
+    fun calculateStickyHeight(): Int {
+        if (stickyPaths.isEmpty()) return 0
+        val rowHeight = getRowHeight()
+        return (stickyPaths.size * rowHeight - pushOffset).coerceAtLeast(0)
+    }
 
     fun update() {
         if (tree.rowCount == 0) {
-            clearSticky()
+            if (stickyPaths.isNotEmpty()) clearSticky()
             return
         }
         
         val visibleRect = tree.visibleRect
+        if (visibleRect.height <= 0 || visibleRect.width <= 0) return
+        
         val rowHeight = getRowHeight()
         val settings = StickyProjectSettings.instance
         val maxStickyLimit = settings.state.maxStickyLimit
         
-        val newStickyPaths = mutableListOf<TreePath>()
-        var currentStickyBottomRelative = 0 
+        // 1. Identify the top visible path (Anchor)
+        val topRow = tree.getClosestRowForLocation(0, visibleRect.y)
         
-        // Iterative Probing with Strict/Loose checks
-        while (newStickyPaths.size < maxStickyLimit) {
-            val stickyBottom = visibleRect.y + currentStickyBottomRelative
-            // Probe deeper to catch entering rows
-            val probeY = stickyBottom + (rowHeight / 2) 
-            
-            val row = tree.getClosestRowForLocation(0, probeY)
-            if (row == -1) break
-            
-            val path = tree.getPathForRow(row) ?: break
-            val rowBounds = tree.getRowBounds(row) ?: break
-            
-            val candidates = mutableListOf<TreePath>()
-            var ptr: TreePath? = path.parentPath
-            while (ptr != null) {
-                if (tree.isRootVisible || ptr.parentPath != null) {
-                    candidates.add(0, ptr)
-                }
-                ptr = ptr.parentPath
-            }
-            
+        if (topRow == -1) {
+             if (stickyPaths.isNotEmpty()) repaint() // Ensure we don't leave artifacts if lookup fails
+             return
+        }
+        
+        val path = tree.getPathForRow(topRow)
+        if (path == null) {
+            // Transient state, abort update but keep repainting to avoid visual glitches
+            if (stickyPaths.isNotEmpty()) repaint()
+            return
+        }
+        
+        // 2. Build candidates from parent chain
+        val newStickyPaths = mutableListOf<TreePath>()
+        var ptr = path.parentPath // Start from parent, as the node itself is visible
+        
+        while (ptr != null && newStickyPaths.size < maxStickyLimit) {
+            val node = ptr.lastPathComponent
             var isContainer = false
-            val node = path.lastPathComponent
+            
             if (node is DefaultMutableTreeNode) {
                 if (node.allowsChildren && !node.isLeaf) {
-                     isContainer = true
+                    isContainer = true
                 } else {
                     val userObject = node.userObject
                     if (userObject is AbstractTreeNode<*>) {
@@ -345,46 +420,14 @@ class StickyHeaderComponent(
                 }
             }
             
-            // Fix: Strict vs Loose Comparison
-            // Level 0 (Root/First Item): loose `<=` to ensure it sticks immediately at top (0).
-            // Level > 0 (Nested): strict `<` to ensure it waits until it physically slides UNDER the parent sticky.
-            // This prevents "Double Jump" (cascading stickiness) and hiding of content.
-            
-            val useStrict = newStickyPaths.isNotEmpty()
-            
             if (isContainer) {
-                val matches = if (useStrict) {
-                     rowBounds.y < stickyBottom // Strict: Must be slightly under
-                } else {
-                     rowBounds.y <= stickyBottom + 1 // Loose: Catch 0/1px
-                }
-                
-                if (matches) {
-                    candidates.add(path)
-                }
+                newStickyPaths.add(0, ptr) // Prepend to maintain Root -> Leaf order
             }
             
-            var addedAny = false
-            for (candidate in candidates) {
-                if (newStickyPaths.size >= maxStickyLimit) break
-                if (newStickyPaths.contains(candidate)) continue
-                
-                if (newStickyPaths.isNotEmpty()) {
-                    val last = newStickyPaths.last()
-                    if (!last.isDescendant(candidate)) {
-                        break 
-                    }
-                }
-                
-                newStickyPaths.add(candidate)
-                currentStickyBottomRelative += rowHeight
-                addedAny = true
-            }
-            
-            if (!addedAny) break
+            ptr = ptr.parentPath
         }
         
-        // Push Logic
+        // 3. Push Logic
         var calculatedPushOffset = 0
         
         if (newStickyPaths.isNotEmpty()) {
@@ -396,13 +439,14 @@ class StickyHeaderComponent(
                 if (nextRow != -1) {
                     val bounds = tree.getRowBounds(nextRow)
                     if (bounds != null) {
-                        val contentBottomY = bounds.y
                         val stackHeight = newStickyPaths.size * rowHeight
+                        // visualStackBottomY is where the bottom of the sticky stack sits in the viewport
                         val visualStackBottomY = visibleRect.y + stackHeight
                         
-                        val diff = visualStackBottomY - contentBottomY
-                        if (diff > 0) {
-                            calculatedPushOffset = diff
+                        // If the next sibling (header candidate) is scrolling up into the stack area
+                        if (bounds.y < visualStackBottomY) {
+                            calculatedPushOffset = visualStackBottomY - bounds.y
+                            // Cap push to one row height (complete displacement)
                             if (calculatedPushOffset > rowHeight) calculatedPushOffset = rowHeight
                         }
                     }
@@ -410,9 +454,15 @@ class StickyHeaderComponent(
             }
         }
         
+        // 4. Commit changes
         if (stickyPaths != newStickyPaths || pushOffset != calculatedPushOffset) {
             stickyPaths = newStickyPaths
             pushOffset = calculatedPushOffset
+            onBoundsUpdateNeeded()
+        }
+        
+        // Always repaint if active to prevent visual glitches
+        if (stickyPaths.isNotEmpty()) {
             repaint()
         }
     }
@@ -420,15 +470,26 @@ class StickyHeaderComponent(
     private fun findNextSiblingOrCousin(path: TreePath): TreePath? {
         val parent = path.parentPath ?: return null
         val node = path.lastPathComponent
-        val parentNode = parent.lastPathComponent
-        val model = tree.model
-        val count = model.getChildCount(parentNode)
-        val idx = model.getIndexOfChild(parentNode, node)
         
-        if (idx < count - 1) {
-            val nextNode = model.getChild(parentNode, idx + 1)
-            return parent.pathByAddingChild(nextNode)
+        // Fast path for DefaultMutableTreeNode (O(1))
+        if (node is DefaultMutableTreeNode) {
+            val nextNode = node.nextSibling
+            if (nextNode != null) {
+                return parent.pathByAddingChild(nextNode)
+            }
+        } else {
+            // Fallback for other node types
+            val parentNode = parent.lastPathComponent
+            val model = tree.model
+            val idx = model.getIndexOfChild(parentNode, node)
+            val count = model.getChildCount(parentNode)
+            
+            if (idx != -1 && idx < count - 1) {
+                val nextNode = model.getChild(parentNode, idx + 1)
+                return parent.pathByAddingChild(nextNode)
+            }
         }
+        
         return findNextSiblingOrCousin(parent)
     }
 
@@ -445,7 +506,6 @@ class StickyHeaderComponent(
         
         val g2 = g.create() as Graphics2D
         val rowHeight = getRowHeight()
-        val colorManager = FileColorManager.getInstance(project)
         
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
@@ -459,33 +519,7 @@ class StickyHeaderComponent(
                     yPos -= pushOffset
                 }
                 
-                var bgColor: Color? = null
-                val node = path.lastPathComponent
-                var virtualFile: VirtualFile? = null
-                
-                if (node is DefaultMutableTreeNode) {
-                     val userObject = node.userObject
-                     if (userObject is AbstractTreeNode<*>) {
-                         val value = userObject.value
-                         if (value is PsiElement) {
-                             virtualFile = value.containingFile?.virtualFile ?: (value as? com.intellij.psi.PsiDirectory)?.virtualFile
-                         } else if (value is VirtualFile) {
-                             virtualFile = value
-                         }
-                     }
-                }
-                
-                if (virtualFile != null) {
-                    try {
-                        bgColor = colorManager.getFileColor(virtualFile)
-                    } catch (e: Exception) { }
-                }
-
-                if (bgColor == null) {
-                    bgColor = UIUtil.getTreeBackground()
-                }
-                
-                drawRow(g2, path, yPos, rowHeight, bgColor)
+                drawRow(g2, path, yPos, rowHeight)
             }
             
             val stackBottom = stickyPaths.size * rowHeight - pushOffset
@@ -497,14 +531,47 @@ class StickyHeaderComponent(
         }
     }
     
-    private fun drawRow(g2: Graphics2D, path: TreePath, yPos: Int, rowHeight: Int, bgColor: Color) {
+    private fun drawRow(g2: Graphics2D, path: TreePath, yPos: Int, rowHeight: Int) {
         val renderer = tree.cellRenderer
         val node = path.lastPathComponent
+        val row = tree.getRowForPath(path)
         val component = renderer.getTreeCellRendererComponent(
-            tree, node, false, true, false, tree.getRowForPath(path), false
+            tree, node, false, true, false, row, false
         ) as JComponent
         
-        // 1. Fill background manually with correct Scope Color
+        val colorManager = FileColorManager.getInstance(project)
+        val areFileColorsEnabled = colorManager.isEnabled && colorManager.isEnabledForProjectView
+        
+        // Get VirtualFile from node to query FileColorManager directly
+        var virtualFile: VirtualFile? = null
+        if (node is DefaultMutableTreeNode) {
+            val userObject = node.userObject
+            if (userObject is AbstractTreeNode<*>) {
+                val value = userObject.value
+                when (value) {
+                    is PsiDirectory -> virtualFile = value.virtualFile
+                    is PsiDirectoryContainer -> virtualFile = value.directories.firstOrNull()?.virtualFile
+                    is PsiFileSystemItem -> virtualFile = value.virtualFile
+                    is VirtualFile -> virtualFile = value
+                }
+            }
+        }
+        
+        // Get background color directly from FileColorManager for this file
+        // This respects user's scope color settings (Tests, custom scopes, etc.)
+        // Returns null for files without a configured color
+        var bgColor: Color? = if (areFileColorsEnabled && virtualFile != null) {
+            colorManager.getFileColor(virtualFile)
+        } else {
+            null
+        }
+        
+        // Fallback to tree background (gray) for files without color or root
+        if (bgColor == null) {
+            bgColor = tree.background ?: UIUtil.getTreeBackground()
+        }
+        
+        // 1. Fill background with correct color
         g2.color = bgColor
         g2.fillRect(0, yPos, width, rowHeight)
         
@@ -513,7 +580,10 @@ class StickyHeaderComponent(
             g2.fillRect(0, yPos, width, rowHeight)
         }
         
-        val indent = (path.pathCount - 1) * JBUI.scale(20)
+        // Use actual tree row bounds to get correct indent
+        val rowBounds = if (row >= 0) tree.getRowBounds(row) else null
+        val indent = rowBounds?.x ?: 0
+        
         val oldClip = g2.clip
         g2.clipRect(0, yPos, width, rowHeight)
         g2.translate(indent, yPos)

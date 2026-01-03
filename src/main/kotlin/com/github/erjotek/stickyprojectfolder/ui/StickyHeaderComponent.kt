@@ -1,0 +1,582 @@
+package com.github.erjotek.stickyprojectfolder.ui
+
+import com.intellij.ide.util.treeView.AbstractTreeNode
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiDirectory
+import com.intellij.psi.PsiDirectoryContainer
+import com.intellij.psi.PsiFileSystemItem
+import com.intellij.ui.ColorUtil
+import com.intellij.ui.FileColorManager
+import com.intellij.ui.JBColor
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import java.awt.*
+import java.awt.datatransfer.DataFlavor
+import java.awt.dnd.*
+import java.awt.event.*
+import javax.swing.*
+import javax.swing.event.TreeModelEvent
+import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.TreePath
+
+private val LOG = Logger.getInstance(StickyHeaderComponent::class.java)
+
+class StickyHeaderComponent(
+    private val project: Project,
+    private val tree: JTree,
+    private val scrollPane: JScrollPane,
+    private val onBoundsUpdateNeeded: () -> Unit = {},
+    private val onStickyHeaderClick: () -> Unit = {}
+) : JComponent() {
+
+    fun getTree(): JTree = tree
+
+    internal data class StickyRow(val path: TreePath, val indent: Int)
+
+    private var stickyRows: List<StickyRow> = emptyList()
+    private var pushOffset: Int = 0
+    private var hoverIndex: Int = -1
+    internal var cachedRowHeight: Int = JBUI.scale(22)
+
+    // Cache for file colors to avoid slow operations on EDT
+    private val colorCache = mutableMapOf<String, Color?>()
+
+    init {
+        isOpaque = false
+
+        // Enable drop target for drag & drop on sticky headers
+        dropTarget = DropTarget(this, DnDConstants.ACTION_COPY_OR_MOVE, object : DropTargetAdapter() {
+            override fun dragOver(e: DropTargetDragEvent) {
+                val idx = getIndexAt(e.location.y)
+                if (idx != -1 && isWithinTreeBounds(e.location.x)) {
+                    e.acceptDrag(DnDConstants.ACTION_MOVE)
+                    if (hoverIndex != idx) {
+                        hoverIndex = idx
+                        repaint()
+                    }
+                } else {
+                    e.rejectDrag()
+                }
+            }
+
+            override fun dragExit(dte: DropTargetEvent?) {
+                if (hoverIndex != -1) {
+                    hoverIndex = -1
+                    repaint()
+                }
+            }
+
+            override fun drop(e: DropTargetDropEvent) {
+                handleDrop(e)
+            }
+        }, true)
+
+        val mouseHandler = object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (!isWithinTreeBounds(e.x)) return
+                val path = getPathAt(e.y)
+                if (path != null) {
+                    onStickyHeaderClick()
+                    tree.selectionPath = path
+                    tree.scrollPathToVisible(path)
+                    e.consume()
+                }
+            }
+
+            override fun mouseMoved(e: MouseEvent) {
+                if (!isWithinTreeBounds(e.x)) {
+                    if (hoverIndex != -1) {
+                        hoverIndex = -1
+                        cursor = Cursor.getDefaultCursor()
+                        repaint()
+                    }
+                    return
+                }
+
+                val idx = getIndexAt(e.y)
+                if (hoverIndex != idx) {
+                    hoverIndex = idx
+                    cursor = if (idx != -1) Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) else Cursor.getDefaultCursor()
+                    repaint()
+                }
+            }
+
+            override fun mouseExited(e: MouseEvent) {
+                if (hoverIndex != -1) {
+                    hoverIndex = -1
+                    repaint()
+                }
+            }
+        }
+        addMouseListener(mouseHandler)
+        addMouseMotionListener(mouseHandler)
+    }
+
+    private fun isWithinTreeBounds(x: Int): Boolean {
+        return x >= 0 && x < width
+    }
+
+    override fun contains(x: Int, y: Int): Boolean {
+        if (!isVisible || stickyRows.isEmpty()) return false
+        if (x < 0 || x >= width) return false
+        if (y < 0) return false
+
+        val totalHeight = stickyRows.size * cachedRowHeight - pushOffset
+        return y >= 0 && y < totalHeight
+    }
+
+    private fun getIndexAt(y: Int): Int {
+        val rowHeight = cachedRowHeight
+        val totalHeight = stickyRows.size * rowHeight - pushOffset
+        if (y >= totalHeight) return -1
+
+        val lastIdx = stickyRows.size - 1
+        val lastItemTop = lastIdx * rowHeight - pushOffset
+        val lastItemBottom = lastItemTop + rowHeight
+
+        if (y >= lastItemTop && y < lastItemBottom) return lastIdx
+
+        val stableHeight = lastIdx * rowHeight
+        if (y < stableHeight) return y / rowHeight
+
+        return -1
+    }
+
+    private fun getPathAt(y: Int): TreePath? {
+        val idx = getIndexAt(y)
+        return if (idx in stickyRows.indices) stickyRows[idx].path else null
+    }
+
+    private fun getTargetDirectoryAt(y: Int): PsiDirectory? {
+        val idx = getIndexAt(y)
+        if (idx !in stickyRows.indices) return null
+
+        val stickyRow = stickyRows[idx]
+        val node = stickyRow.path.lastPathComponent
+        if (node is DefaultMutableTreeNode) {
+            val userObject = node.userObject
+            if (userObject is AbstractTreeNode<*>) {
+                val value = userObject.value
+                if (value is PsiDirectory) return value
+            }
+        }
+        return null
+    }
+
+    private fun handleDrop(e: DropTargetDropEvent) {
+        LOG.info("handleDrop called at ${e.location}")
+
+        if (!isWithinTreeBounds(e.location.x)) {
+            LOG.info("Drop rejected - not within tree bounds")
+            e.rejectDrop()
+            return
+        }
+
+        val targetDir = getTargetDirectoryAt(e.location.y)
+        if (targetDir == null) {
+            LOG.info("Drop rejected - no target directory at y=${e.location.y}")
+            e.rejectDrop()
+            return
+        }
+
+        LOG.info("Target directory: ${targetDir.virtualFile.path}")
+
+        val transferable = e.transferable
+        e.acceptDrop(DnDConstants.ACTION_MOVE)
+
+        LOG.info("Available flavors: ${transferable.transferDataFlavors.map { it.mimeType }}")
+
+        try {
+            var files: List<java.io.File> = emptyList()
+
+            if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                val data = transferable.getTransferData(DataFlavor.javaFileListFlavor)
+                LOG.info("javaFileListFlavor data: $data (${data?.javaClass})")
+                if (data is java.util.List<*>) {
+                    files = data.filterIsInstance<java.io.File>()
+                }
+            }
+
+            LOG.info("Files to move: ${files.map { it.path }}")
+
+            if (files.isNotEmpty()) {
+                ApplicationManager.getApplication().invokeLater {
+                    moveFilesToDirectory(files, targetDir)
+                }
+            }
+        } catch (ex: Exception) {
+            LOG.warn("Drop handling failed", ex)
+        }
+
+        e.dropComplete(true)
+        hoverIndex = -1
+        repaint()
+    }
+
+    private fun moveFilesToDirectory(files: List<java.io.File>, targetDir: PsiDirectory) {
+        LOG.info("moveFilesToDirectory called: ${files.size} files to ${targetDir.virtualFile.path}")
+
+        val psiElements = files.mapNotNull { file ->
+            ReadAction.compute<com.intellij.psi.PsiElement?, Nothing> {
+                val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByIoFile(file)
+                if (vf != null) {
+                    if (vf.isDirectory) {
+                        com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
+                    } else {
+                        com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
+                    }
+                } else null
+            }
+        }.toTypedArray()
+
+        LOG.info("Found ${psiElements.size} PSI elements to move")
+
+        if (psiElements.isNotEmpty()) {
+            ApplicationManager.getApplication().invokeLater {
+                try {
+                    com.intellij.refactoring.move.MoveHandler.doMove(
+                        project,
+                        psiElements,
+                        targetDir,
+                        null,
+                        null
+                    )
+                    LOG.info("MoveHandler.doMove completed")
+                } catch (ex: Exception) {
+                    LOG.warn("Move failed", ex)
+                }
+            }
+        }
+    }
+
+    internal fun calculateRowHeight(): Int? {
+        val rowHeight = tree.rowHeight
+        if (rowHeight > 0) return rowHeight
+
+        if (tree.rowCount > 0) {
+            val visibleRow = tree.getClosestRowForLocation(0, tree.visibleRect.y)
+            val visibleBounds = if (visibleRow >= 0) tree.getRowBounds(visibleRow) else null
+            if (visibleBounds != null && visibleBounds.height > 0) return visibleBounds.height
+
+            val firstBounds = tree.getRowBounds(0)
+            if (firstBounds != null && firstBounds.height > 0) return firstBounds.height
+        }
+
+        return null
+    }
+
+    fun getStickyHeight(): Int {
+        return (stickyRows.size * cachedRowHeight - pushOffset).coerceAtLeast(0)
+    }
+
+    fun update(forceRepaint: Boolean = false) {
+        if (tree.rowCount == 0) {
+            if (stickyRows.isNotEmpty()) clearSticky()
+            return
+        }
+
+        val visibleRect = tree.visibleRect
+        if (visibleRect.height <= 0 || visibleRect.width <= 0) {
+            return
+        }
+
+        val calculatedHeight = calculateRowHeight()
+        if (calculatedHeight != null) {
+            cachedRowHeight = calculatedHeight
+        }
+        val rowHeight = cachedRowHeight
+
+        val settings = com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings.instance
+        val maxStickyLimit = settings.state.maxStickyLimit
+
+        val newStickyRows = mutableListOf<StickyRow>()
+        
+        // Probe at the bottom of where sticky stack would be to find what's visible there
+        // This ensures we catch folders as soon as they touch the sticky bottom
+        var currentProbeY = visibleRect.y
+        
+        while (newStickyRows.size < maxStickyLimit) {
+            // Find the row at the current probe position (bottom of sticky stack)
+            val probeRow = tree.getClosestRowForLocation(0, currentProbeY + 1)
+            if (probeRow == -1) break
+            
+            val probePath = tree.getPathForRow(probeRow) ?: break
+            tree.getRowBounds(probeRow) ?: break
+            
+            // Build list of parent containers for this row (from root to current)
+            val candidates = mutableListOf<TreePath>()
+            var ptr: TreePath? = probePath
+            while (ptr != null) {
+                val node = ptr.lastPathComponent
+                var isContainer = false
+                
+                if (node is DefaultMutableTreeNode) {
+                    if (node.allowsChildren && !node.isLeaf) {
+                        isContainer = true
+                    } else {
+                        val userObject = node.userObject
+                        if (userObject is AbstractTreeNode<*>) {
+                            val value = userObject.value
+                            if (value is PsiDirectory ||
+                                value is PsiDirectoryContainer ||
+                                value is com.intellij.openapi.project.Project) {
+                                isContainer = true
+                            }
+                        }
+                    }
+                }
+                
+                if (isContainer) {
+                    candidates.add(0, ptr) // Add at beginning to get root-first order
+                }
+                ptr = ptr.parentPath
+            }
+            
+            // Find the next candidate that should become sticky
+            var addedAny = false
+            for (candidatePath in candidates) {
+                if (newStickyRows.size >= maxStickyLimit) break
+                if (newStickyRows.any { it.path == candidatePath }) continue
+                
+                // Verify this is a child of the last sticky (if any)
+                if (newStickyRows.isNotEmpty()) {
+                    val lastSticky = newStickyRows.last().path
+                    if (!lastSticky.isDescendant(candidatePath)) continue
+                }
+                
+                val candidateRow = tree.getRowForPath(candidatePath)
+                if (candidateRow == -1) continue
+                
+                val rowBounds = tree.getRowBounds(candidateRow) ?: continue
+                
+                // Calculate where the sticky stack bottom currently is
+                val currentStickyBottom = visibleRect.y + (newStickyRows.size * rowHeight)
+                
+                // A folder becomes sticky when its top edge touches or passes the sticky bottom
+                if (rowBounds.y <= currentStickyBottom) {
+                    val indent = rowBounds.x
+                    newStickyRows.add(StickyRow(candidatePath, indent))
+                    currentProbeY = visibleRect.y + (newStickyRows.size * rowHeight)
+                    addedAny = true
+                    break // Re-probe at new position
+                }
+            }
+            
+            if (!addedAny) break
+        }
+
+        // Push Logic
+        var calculatedPushOffset = 0
+
+        if (newStickyRows.isNotEmpty()) {
+            val lastSticky = newStickyRows.last().path
+            val nextSibling = findNextSiblingOrCousin(lastSticky)
+
+            if (nextSibling != null) {
+                val nextRow = tree.getRowForPath(nextSibling)
+                if (nextRow != -1) {
+                    val bounds = tree.getRowBounds(nextRow)
+                    if (bounds != null) {
+                        val stackHeight = newStickyRows.size * rowHeight
+                        val visualStackBottomY = visibleRect.y + stackHeight
+
+                        if (bounds.y < visualStackBottomY) {
+                            calculatedPushOffset = (visualStackBottomY - bounds.y).coerceIn(0, rowHeight)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Commit changes
+        var stateChanged = false
+
+        val areSemanticallyEqual = if (stickyRows.size == newStickyRows.size) {
+            stickyRows.zip(newStickyRows).all { (old, new) ->
+                old.indent == new.indent &&
+                    old.path.lastPathComponent.toString() == new.path.lastPathComponent.toString()
+            }
+        } else false
+
+        if (!areSemanticallyEqual || pushOffset != calculatedPushOffset) {
+            stickyRows = newStickyRows
+            pushOffset = calculatedPushOffset
+            onBoundsUpdateNeeded()
+            stateChanged = true
+        } else if (stickyRows != newStickyRows) {
+            stickyRows = newStickyRows
+        }
+
+        if (stateChanged || forceRepaint) {
+            repaint()
+        }
+    }
+
+    fun isAffectedBy(e: TreeModelEvent): Boolean {
+        if (stickyRows.isEmpty()) return false
+
+        val parentPath = e.treePath
+        val indices = e.childIndices
+        if (indices == null || indices.isEmpty()) {
+            return stickyRows.any { it.path == parentPath }
+        }
+
+        val children = e.children ?: return false
+        for (child in children) {
+            val childPath = parentPath.pathByAddingChild(child)
+            if (stickyRows.any { it.path == childPath }) return true
+        }
+        return false
+    }
+
+    private fun findNextSiblingOrCousin(path: TreePath): TreePath? {
+        val parent = path.parentPath ?: return null
+        val node = path.lastPathComponent
+
+        if (node is DefaultMutableTreeNode) {
+            val nextNode = node.nextSibling
+            if (nextNode != null) {
+                return parent.pathByAddingChild(nextNode)
+            }
+        } else {
+            val parentNode = parent.lastPathComponent
+            if (parentNode is DefaultMutableTreeNode) {
+                val childCount = parentNode.childCount
+                for (i in 0 until childCount) {
+                    val child = parentNode.getChildAt(i)
+                    if (child === node && i + 1 < childCount) {
+                        return parent.pathByAddingChild(parentNode.getChildAt(i + 1))
+                    }
+                }
+            }
+        }
+
+        return findNextSiblingOrCousin(parent)
+    }
+
+    private fun clearSticky() {
+        if (stickyRows.isNotEmpty()) {
+            stickyRows = emptyList()
+            pushOffset = 0
+            repaint()
+        }
+    }
+
+    override fun paintComponent(g: Graphics) {
+        if (stickyRows.isEmpty()) return
+
+        val g2 = g.create() as Graphics2D
+        val rowHeight = cachedRowHeight
+
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+
+            for (i in stickyRows.indices.reversed()) {
+                val stickyRow = stickyRows[i]
+                var yPos = i * rowHeight
+
+                if (i == stickyRows.size - 1) {
+                    yPos -= pushOffset
+                }
+
+                drawRow(g2, stickyRow, yPos, rowHeight)
+            }
+
+            val stackBottom = stickyRows.size * rowHeight - pushOffset
+            g2.color = JBColor.border()
+            g2.drawLine(0, stackBottom - 1, width, stackBottom - 1)
+
+        } finally {
+            g2.dispose()
+        }
+    }
+
+    private fun drawRow(g2: Graphics2D, stickyRow: StickyRow, yPos: Int, rowHeight: Int) {
+        val renderer = tree.cellRenderer
+        val path = stickyRow.path
+        val node = path.lastPathComponent
+        val row = tree.getRowForPath(path)
+        val component = renderer.getTreeCellRendererComponent(
+            tree, node, false, true, false, row, false
+        ) as JComponent
+
+        var virtualFile: VirtualFile? = null
+        if (node is DefaultMutableTreeNode) {
+            val userObject = node.userObject
+            if (userObject is AbstractTreeNode<*>) {
+                val value = userObject.value
+                when (value) {
+                    is PsiDirectory -> virtualFile = value.virtualFile
+                    is PsiDirectoryContainer -> virtualFile = value.directories.firstOrNull()?.virtualFile
+                    is PsiFileSystemItem -> virtualFile = value.virtualFile
+                    is VirtualFile -> virtualFile = value
+                }
+            }
+        }
+
+        val defaultBg = tree.background ?: UIUtil.getTreeBackground()
+        
+        val bgColor = if (virtualFile != null) {
+            val cacheKey = virtualFile.path
+            if (colorCache.containsKey(cacheKey)) {
+                colorCache[cacheKey] ?: defaultBg
+            } else {
+                // Load color asynchronously to avoid SlowOperations on EDT
+                ApplicationManager.getApplication().executeOnPooledThread {
+                    val color = ReadAction.compute<Color?, Nothing> {
+                        try {
+                            val colorManager = FileColorManager.getInstance(project)
+                            if (colorManager.isEnabled && colorManager.isEnabledForProjectView) {
+                                colorManager.getFileColor(virtualFile)
+                            } else {
+                                null
+                            }
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    colorCache[cacheKey] = color
+                    ApplicationManager.getApplication().invokeLater {
+                        repaint()
+                    }
+                }
+                defaultBg
+            }
+        } else {
+            defaultBg
+        }
+
+        g2.color = bgColor
+        g2.fillRect(0, yPos, width, rowHeight)
+
+        if (stickyRows.indexOf(stickyRow) == hoverIndex) {
+            g2.color = ColorUtil.withAlpha(JBColor.blue, 0.1)
+            g2.fillRect(0, yPos, width, rowHeight)
+        }
+
+        val indent = stickyRow.indent
+
+        val oldClip = g2.clip
+        g2.clipRect(0, yPos, width, rowHeight)
+        g2.translate(indent, yPos)
+
+        component.isOpaque = false
+        component.background = null
+
+        component.foreground = UIUtil.getTreeForeground()
+        component.bounds = Rectangle(0, 0, width - indent, rowHeight)
+        component.validate()
+
+        component.paint(g2)
+
+        g2.translate(-indent, -yPos)
+        g2.clip = oldClip
+
+        g2.color = JBColor.border()
+        g2.drawLine(0, yPos + rowHeight - 1, width, yPos + rowHeight - 1)
+    }
+}
