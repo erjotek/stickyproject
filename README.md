@@ -1,4 +1,4 @@
-# stickyproject
+# Sticky Project Directories Plugin
 
 <!-- Plugin description -->
 Sticky Project Directories plugin for JetBrains IDEs.

@@ -36,6 +36,10 @@ class StickyScrollManager(private val project: Project) : Disposable {
     // Flag to skip autoscroll when selection comes from sticky header click
     private var skipNextAutoscroll = false
 
+    init {
+        install()
+    }
+
     fun install() {
         scheduleTryInstall()
 

@@ -78,11 +78,31 @@ class StickyHeaderComponent(
         val mouseHandler = object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (!isWithinTreeBounds(e.x)) return
+                val idx = getIndexAt(e.y)
                 val path = getPathAt(e.y)
-                if (path != null) {
+                if (path != null && idx != -1) {
                     onStickyHeaderClick()
                     tree.selectionPath = path
-                    tree.scrollPathToVisible(path)
+                    // Calculate how many parent folders will become sticky after scroll
+                    // idx is 0-based, so idx parent folders will be above the clicked one
+                    val parentStickyCount = idx
+                    val parentStickyHeight = parentStickyCount * cachedRowHeight
+                    // Scroll to the folder position minus the space needed for parent sticky headers
+                    val row = tree.getRowForPath(path)
+                    if (row != -1) {
+                        val rowBounds = tree.getRowBounds(row)
+                        if (rowBounds != null) {
+                            // Target Y: folder's Y minus parent sticky height minus a few pixels margin
+                            val targetY = (rowBounds.y - parentStickyHeight - 3).coerceAtLeast(0)
+                            val visibleRect = tree.visibleRect
+                            tree.scrollRectToVisible(java.awt.Rectangle(
+                                visibleRect.x,
+                                targetY,
+                                visibleRect.width,
+                                visibleRect.height
+                            ))
+                        }
+                    }
                     e.consume()
                 }
             }

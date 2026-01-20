@@ -1,8 +1,12 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
-# stickyproject Changelog
+# Sticky Project Directories Changelog
 
 ## [Unreleased]
+
+## [0.8.2] - 2026-01-20
+### Fixed
+- Fixed scrolling behavior when clicking sticky headers.
 
 ## [0.7.34] - 2026-01-20
 ### Added
