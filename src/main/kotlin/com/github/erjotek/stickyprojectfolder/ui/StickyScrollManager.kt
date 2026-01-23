@@ -52,11 +52,6 @@ class StickyScrollManager(private val project: Project) : Disposable {
                     if (!project.isDisposed) updateBounds()
                 }, project.disposed)
             }
-
-            @Suppress("OVERRIDE_DEPRECATION")
-            override fun toolWindowRegistered(id: String) {
-                if (id == ToolWindowId.PROJECT_VIEW) scheduleTryInstall()
-            }
         })
 
         checkTimer = Timer(1000) {
