@@ -13,6 +13,6 @@
         <applicationService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings"/>
         <projectConfigurable parentId="tools" instance="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
                              id="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
-                             displayName="Sticky Project Directories"/>
+                             displayName="Sticky Project Folder"/>
     </extensions>
 </idea-plugin>

@@ -3,7 +3,9 @@ package com.github.erjotek.stickyprojectfolder.settings
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
-import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.module.ModuleManager
+import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.ui.JBColor
 import com.intellij.ui.JBIntSpinner
 import com.intellij.ui.ToolbarDecorator
@@ -17,13 +19,20 @@ import java.awt.Dimension
 import java.io.File
 import javax.swing.*
 
-class StickyProjectConfigurable : Configurable {
+class StickyProjectConfigurable(
+    private val project: Project
+) : Configurable {
 
     private var mySettingsComponent: JPanel? = null
     private var maxStickyLimitSpinner: JBIntSpinner? = null
     private var autoCollapseEnabledCheckbox: JBCheckBox? = null
+    private var autoCollapseIncludeExcludedCheckbox: JBCheckBox? = null
     private var pathsListModel: DefaultListModel<String>? = null
     private var pathsList: JBList<String>? = null
+    private var excludedPathsListModel: DefaultListModel<String>? = null
+    private var excludedPathsList: JBList<String>? = null
+    private var excludedListPanel: JPanel? = null
+    private var excludedReadOnlyLabel: JBLabel? = null
 
     override fun getDisplayName(): String = "Sticky Project"
 
@@ -32,10 +41,11 @@ class StickyProjectConfigurable : Configurable {
     override fun createComponent(): JComponent {
         maxStickyLimitSpinner = JBIntSpinner(10, 1, 100)
         autoCollapseEnabledCheckbox = JBCheckBox("Enable auto-collapse directories")
+        autoCollapseIncludeExcludedCheckbox = JBCheckBox("Auto-collapse excluded folders")
         
         pathsListModel = DefaultListModel<String>()
         pathsList = JBList<String>(pathsListModel!!).apply {
-            cellRenderer = PathListCellRenderer()
+            cellRenderer = PathListCellRenderer(pathsListModel!!)
             selectionMode = ListSelectionModel.SINGLE_SELECTION
         }
 
@@ -48,19 +58,42 @@ class StickyProjectConfigurable : Configurable {
             preferredSize = Dimension(0, JBUI.scale(150))
         }
 
+        excludedPathsListModel = DefaultListModel<String>()
+        excludedPathsList = JBList<String>(excludedPathsListModel!!).apply {
+            cellRenderer = PathListCellRenderer(excludedPathsListModel!!)
+            selectionMode = ListSelectionModel.SINGLE_SELECTION
+        }
+        excludedReadOnlyLabel = JBLabel("Read-only (from project settings)")
+        excludedListPanel = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+            add(JScrollPane(excludedPathsList).apply {
+                preferredSize = Dimension(0, JBUI.scale(120))
+            })
+            add(Box.createVerticalStrut(JBUI.scale(6)))
+            add(excludedReadOnlyLabel)
+        }
+        updateExcludedPathsModel()
+
+        autoCollapseIncludeExcludedCheckbox?.addActionListener {
+            updateExcludedPanelState()
+        }
+
         mySettingsComponent = FormBuilder.createFormBuilder()
             .addLabeledComponent(JBLabel("Max sticky directories (1-100):"), maxStickyLimitSpinner!!, 1, false)
             .addSeparator()
             .addComponent(autoCollapseEnabledCheckbox!!, JBUI.scale(10))
             .addLabeledComponent(JBLabel("Auto-collapse paths (relative to project root):"), listPanel, 1, true)
+            .addComponent(autoCollapseIncludeExcludedCheckbox!!, JBUI.scale(6))
+            .addLabeledComponent(JBLabel("Excluded paths (from project settings):"), excludedListPanel!!, 1, true)
             .addComponentFillVertically(JPanel(), 0)
             .panel
+
+        updateExcludedPanelState()
 
         return mySettingsComponent!!
     }
 
     private fun addPath() {
-        val project = ProjectManager.getInstance().openProjects.firstOrNull() ?: return
         val descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor()
         descriptor.title = "Select Directory to Auto-Collapse"
         val projectDir = project.basePath?.let { com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(it) }
@@ -80,9 +113,24 @@ class StickyProjectConfigurable : Configurable {
 
                 if (relativePath.isNotEmpty() && !pathsListModel!!.contains(relativePath)) {
                     pathsListModel!!.addElement(relativePath)
+                    sortPathsListModel()
                 }
             }
         }
+    }
+
+    private fun isNestedPath(value: String, model: ListModel<String>): Boolean {
+        val normalizedValue = value.trimEnd('/')
+        if (normalizedValue.isEmpty()) return false
+        for (i in 0 until model.size) {
+            val other = model.getElementAt(i)
+            val normalizedOther = other.trimEnd('/')
+            if (normalizedOther.isEmpty() || normalizedOther == normalizedValue) continue
+            if (normalizedValue.startsWith("$normalizedOther/")) {
+                return true
+            }
+        }
+        return false
     }
 
     private fun removePath() {
@@ -106,12 +154,66 @@ class StickyProjectConfigurable : Configurable {
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .forEach { pathsListModel?.addElement(it) }
+        sortPathsListModel()
+    }
+
+    private fun updateExcludedPanelState() {
+        val enabled = autoCollapseIncludeExcludedCheckbox?.isSelected == true
+        setPanelEnabled(excludedListPanel, enabled)
+        excludedReadOnlyLabel?.isEnabled = enabled
+    }
+
+    private fun setPanelEnabled(component: JComponent?, enabled: Boolean) {
+        component?.isEnabled = enabled
+        component?.components?.forEach { child ->
+            if (child is JComponent) {
+                setPanelEnabled(child, enabled)
+            }
+        }
+    }
+
+    private fun sortPathsListModel() {
+        val model = pathsListModel ?: return
+        val items = (0 until model.size).mapNotNull { index -> model.get(index) }.sorted()
+        model.clear()
+        items.forEach { model.addElement(it) }
+    }
+
+    private fun updateExcludedPathsModel() {
+        val model = excludedPathsListModel ?: return
+        model.clear()
+        getExcludedPaths().forEach { model.addElement(it) }
+    }
+
+    private fun getExcludedPaths(): List<String> {
+        val basePath = project.basePath ?: return emptyList()
+        val excludedRoots = ModuleManager.getInstance(project).modules
+            .flatMap { module ->
+                ModuleRootManager.getInstance(module).contentEntries
+                    .flatMap { entry -> entry.excludeFolderFiles.toList() }
+            }
+        return excludedRoots
+            .mapNotNull { root ->
+                val path = root.path
+                if (!path.startsWith(basePath)) {
+                    null
+                } else {
+                    var relativePath = path.removePrefix(basePath).removePrefix("/")
+                    if (relativePath.isNotEmpty() && !relativePath.endsWith("/")) {
+                        relativePath += "/"
+                    }
+                    relativePath.takeIf { it.isNotEmpty() }
+                }
+            }
+            .distinct()
+            .sorted()
     }
 
     override fun isModified(): Boolean {
         val settings = StickyProjectSettings.instance
         return maxStickyLimitSpinner?.number != settings.state.maxStickyLimit ||
             autoCollapseEnabledCheckbox?.isSelected != settings.state.autoCollapseEnabled ||
+            autoCollapseIncludeExcludedCheckbox?.isSelected != settings.state.autoCollapseIncludeExcluded ||
             getPathsFromModel() != settings.state.autoCollapsePaths
     }
 
@@ -119,6 +221,7 @@ class StickyProjectConfigurable : Configurable {
         val settings = StickyProjectSettings.instance
         settings.state.maxStickyLimit = maxStickyLimitSpinner?.number ?: 10
         settings.state.autoCollapseEnabled = autoCollapseEnabledCheckbox?.isSelected ?: true
+        settings.state.autoCollapseIncludeExcluded = autoCollapseIncludeExcludedCheckbox?.isSelected ?: false
         settings.state.autoCollapsePaths = getPathsFromModel()
     }
 
@@ -126,18 +229,28 @@ class StickyProjectConfigurable : Configurable {
         val settings = StickyProjectSettings.instance
         maxStickyLimitSpinner?.number = settings.state.maxStickyLimit
         autoCollapseEnabledCheckbox?.isSelected = settings.state.autoCollapseEnabled
+        autoCollapseIncludeExcludedCheckbox?.isSelected = settings.state.autoCollapseIncludeExcluded
         setPathsToModel(settings.state.autoCollapsePaths)
+        updateExcludedPathsModel()
+        updateExcludedPanelState()
     }
 
     override fun disposeUIResources() {
         mySettingsComponent = null
         maxStickyLimitSpinner = null
         autoCollapseEnabledCheckbox = null
+        autoCollapseIncludeExcludedCheckbox = null
         pathsListModel = null
         pathsList = null
+        excludedPathsListModel = null
+        excludedPathsList = null
+        excludedListPanel = null
+        excludedReadOnlyLabel = null
     }
 
-    private inner class PathListCellRenderer : ListCellRenderer<String> {
+    private inner class PathListCellRenderer(
+        private val model: ListModel<String>
+    ) : ListCellRenderer<String> {
         private val label = JLabel()
         private val folderIcon = UIManager.getIcon("FileView.directoryIcon")
 
@@ -152,8 +265,7 @@ class StickyProjectConfigurable : Configurable {
             label.icon = folderIcon
             label.border = JBUI.Borders.empty(2, 4)
 
-            val project = ProjectManager.getInstance().openProjects.firstOrNull()
-            val basePath = project?.basePath
+            val basePath = project.basePath
             val pathExists = if (basePath != null && value != null) {
                 val fullPath = "$basePath/${value.trimEnd('/')}"
                 File(fullPath).exists()
@@ -161,12 +273,16 @@ class StickyProjectConfigurable : Configurable {
                 false
             }
 
+            val isNested = value?.let { isNestedPath(it, model) } == true
+
             if (isSelected) {
                 label.background = list?.selectionBackground
                 label.foreground = list?.selectionForeground
             } else {
                 label.background = list?.background
-                label.foreground = if (pathExists) {
+                label.foreground = if (isNested) {
+                    JBColor.namedColor("ColorPalette.YELLOW", JBColor(0x8A6D00, 0xFFD24D))
+                } else if (pathExists) {
                     JBColor.namedColor("Label.foreground", JBColor.foreground())
                 } else {
                     JBColor.namedColor("Label.disabledForeground", JBColor.GRAY)

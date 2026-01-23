@@ -15,7 +15,8 @@ class StickyProjectSettings : PersistentStateComponent<StickyProjectSettings.Sta
     data class State(
         var maxStickyLimit: Int = 10,
         var autoCollapseEnabled: Boolean = true,
-        var autoCollapsePaths: String = "app/node_modules/;app/vendor/"
+        var autoCollapsePaths: String = "app/node_modules/;app/vendor/",
+        var autoCollapseIncludeExcluded: Boolean = false
     )
 
     private var myState = State()

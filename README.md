@@ -1,7 +1,7 @@
-# Sticky Project Directories Plugin
+# Sticky Project Folder Plugin
 
 <!-- Plugin description -->
-Sticky Project Directories plugin for JetBrains IDEs.
+Sticky Project Folder plugin for JetBrains IDEs.
 Keeps parent directories visible at the top of the Project View when scrolling.
 
 ### Features
@@ -11,7 +11,7 @@ Keeps parent directories visible at the top of the Project View when scrolling.
 - Auto-collapse directories when selecting files outside configured paths
 
 ### Configuration
-Go to **Settings/Preferences | Tools | Sticky Project Directories** to configure:
+Go to **Settings/Preferences | Tools | Sticky Project Folder** to configure:
 - Maximum number of sticky headers
 - Enable/disable auto-collapse feature
 - Add/remove directories for auto-collapse (e.g., `node_modules/`, `vendor/`)

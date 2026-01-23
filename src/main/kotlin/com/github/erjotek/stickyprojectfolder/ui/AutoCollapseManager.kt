@@ -6,7 +6,9 @@ import com.intellij.ide.util.treeView.AbstractTreeNode
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
@@ -86,22 +88,31 @@ class AutoCollapseManager(
         val settings = StickyProjectSettings.instance
         if (!settings.state.autoCollapseEnabled) return
 
+        val basePath = project.basePath ?: return
         val pathsConfig = settings.state.autoCollapsePaths
-        if (pathsConfig.isBlank()) return
+        val pathsToCollapse = mutableListOf<String>()
+        if (pathsConfig.isNotBlank()) {
+            pathsToCollapse += pathsConfig.split(";")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        }
+        if (settings.state.autoCollapseIncludeExcluded) {
+            pathsToCollapse += getExcludedPaths(basePath)
+        }
 
-        val pathsToCollapse = pathsConfig.split(";")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+        val normalizedPathsToCollapse = pathsToCollapse
             .map { it.trimEnd('/') }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .sorted()
 
-        if (pathsToCollapse.isEmpty()) return
+        if (normalizedPathsToCollapse.isEmpty()) return
 
         val selectedPath = tree.selectionPath
         val selectedVirtualFile = getVirtualFileFromPath(selectedPath)
         val selectedFilePath = selectedVirtualFile?.path
-        val basePath = project.basePath ?: return
 
-        for (relativePath in pathsToCollapse) {
+        for (relativePath in normalizedPathsToCollapse) {
             val absolutePath = "$basePath/$relativePath"
             
             val isSelectedInsideThisPath = selectedFilePath != null && 
@@ -111,6 +122,24 @@ class AutoCollapseManager(
                 collapsePathInTree(relativePath, absolutePath)
             }
         }
+    }
+
+    private fun getExcludedPaths(basePath: String): List<String> {
+        val excludedRoots = ModuleManager.getInstance(project).modules
+            .flatMap { module ->
+                ModuleRootManager.getInstance(module).contentEntries
+                    .flatMap { entry -> entry.excludeFolderFiles.toList() }
+            }
+        return excludedRoots
+            .mapNotNull { root ->
+                val path = root.path
+                if (!path.startsWith(basePath)) {
+                    null
+                } else {
+                    path.removePrefix(basePath).removePrefix("/")
+                }
+            }
+            .filter { it.isNotBlank() }
     }
 
     private fun collapsePathInTree(relativePath: String, absolutePath: String) {
