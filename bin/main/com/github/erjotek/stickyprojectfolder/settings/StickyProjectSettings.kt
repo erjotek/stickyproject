@@ -13,7 +13,9 @@ import com.intellij.openapi.application.ApplicationManager
 class StickyProjectSettings : PersistentStateComponent<StickyProjectSettings.State> {
 
     data class State(
-        var maxStickyLimit: Int = 10
+        var maxStickyLimit: Int = 10,
+        var autoCollapseEnabled: Boolean = true,
+        var autoCollapsePaths: String = "app/node_modules/;app/vendor/"
     )
 
     private var myState = State()

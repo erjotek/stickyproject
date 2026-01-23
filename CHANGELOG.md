@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-01-23
+### Fixed
+- Added mouse wheel scrolling support over sticky area.
+
 ## [0.8.2] - 2026-01-20
 ### Fixed
 - Fixed scrolling behavior when clicking sticky headers.

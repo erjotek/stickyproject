@@ -9,7 +9,6 @@ Keeps parent directories visible at the top of the Project View when scrolling.
 - Respects file color scopes (Background colors)
 - Configurable limit for sticky headers (default: 10)
 - Auto-collapse directories when selecting files outside configured paths
-- Dynamic updates without IDE restart
 
 ### Configuration
 Go to **Settings/Preferences | Tools | Sticky Project Directories** to configure:

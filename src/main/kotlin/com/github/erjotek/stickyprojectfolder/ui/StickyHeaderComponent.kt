@@ -134,10 +134,26 @@ class StickyHeaderComponent(
         }
         addMouseListener(mouseHandler)
         addMouseMotionListener(mouseHandler)
+        addMouseWheelListener { e -> handleMouseWheel(e) }
     }
 
     private fun isWithinTreeBounds(x: Int): Boolean {
         return x >= 0 && x < width
+    }
+
+    private fun handleMouseWheel(e: MouseWheelEvent) {
+        if (!isWithinTreeBounds(e.x)) return
+
+        val targetBar = if (e.isShiftDown) scrollPane.horizontalScrollBar else scrollPane.verticalScrollBar
+        val increment = targetBar.unitIncrement
+        val delta = e.unitsToScroll * increment
+        val max = targetBar.maximum - targetBar.visibleAmount
+        val nextValue = (targetBar.value + delta).coerceIn(0, max.coerceAtLeast(0))
+
+        if (nextValue != targetBar.value) {
+            targetBar.value = nextValue
+        }
+        e.consume()
     }
 
     override fun contains(x: Int, y: Int): Boolean {
