@@ -10,6 +10,10 @@ Keeps parent directories visible at the top of the Project View when scrolling.
 - Configurable limit for sticky headers (default: 10)
 - Auto-collapse directories when selecting files outside configured paths
 
+### Preview
+![Sticky scroll preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/sticky-scroll.gif)
+![Sticky collapse preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/sticky-collapse.gif)
+
 ### Configuration
 Go to **Settings/Preferences | Tools | Sticky Project Folder** to configure:
 - Maximum number of sticky headers
