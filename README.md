@@ -17,11 +17,11 @@ Go to **Settings/Preferences | Tools | Sticky Project Folder** to configure:
 - Enable/disable auto-collapse feature
 - Add/remove directories for auto-collapse (e.g., `node_modules/`, `vendor/`)
 
+<!-- Plugin description end -->
+
 ### Preview
 ![Sticky scroll preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/sticky-scroll.gif)
 ![Sticky collapse preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/sticky-collapse.gif)
-
-<!-- Plugin description end -->
 
 ## Installation
 
