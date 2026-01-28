@@ -7,9 +7,12 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiDirectoryContainer
 import com.intellij.psi.PsiFileSystemItem
+import com.intellij.openapi.ui.Messages
+import com.intellij.refactoring.copy.CopyHandler
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.FileColorManager
 import com.intellij.ui.JBColor
@@ -17,8 +20,10 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.*
 import java.awt.datatransfer.DataFlavor
+import java.awt.datatransfer.Transferable
 import java.awt.dnd.*
 import java.awt.event.*
+import java.lang.reflect.Method
 import java.util.Collections
 import java.util.WeakHashMap
 import javax.swing.*
@@ -51,6 +56,9 @@ class StickyHeaderComponent(
     private val virtualFileCacheLock = Any()
     private val virtualFileCache = WeakHashMap<Any, VirtualFile?>()
     private val virtualFileLoading = Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
+
+    private val virtualFileMethodCacheLock = Any()
+    private val virtualFileMethodCache = WeakHashMap<Class<*>, Method?>()
 
     // Cache for file colors to avoid slow operations on EDT
     private val colorCache = mutableMapOf<String, Color?>()
@@ -207,7 +215,14 @@ class StickyHeaderComponent(
         val stickyRow = stickyRows[idx]
         val node = stickyRow.path.lastPathComponent
         val value = extractValueFromNode(node)
-        return value as? PsiDirectory
+        if (value is PsiDirectory) return value
+
+        val vf = extractVirtualFileFromNode(node)
+        if (vf != null && vf.isDirectory) {
+            return com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
+        }
+
+        return null
     }
 
     private fun handleDrop(e: DropTargetDropEvent) {
@@ -221,7 +236,9 @@ class StickyHeaderComponent(
             return
         }
 
-        val targetDir = getTargetDirectoryAt(e.location.y)
+        val targetDir = ReadAction.compute<PsiDirectory?, Nothing> {
+            getTargetDirectoryAt(e.location.y)
+        }
         if (targetDir == null) {
             LOG.info("Drop rejected - no target directory at y=${e.location.y}")
             e.rejectDrop()
@@ -231,35 +248,138 @@ class StickyHeaderComponent(
         LOG.info("Target directory: ${targetDir.virtualFile.path}")
 
         val transferable = e.transferable
-        e.acceptDrop(DnDConstants.ACTION_MOVE)
-
         LOG.info("Available flavors: ${transferable.transferDataFlavors.map { it.mimeType }}")
 
-        try {
-            var files: List<java.io.File> = emptyList()
+        val psiElements = ReadAction.compute<Array<PsiElement>, Nothing> {
+            extractPsiElementsFromTransferable(transferable)
+        }
 
-            if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-                val data = transferable.getTransferData(DataFlavor.javaFileListFlavor)
-                LOG.info("javaFileListFlavor data: $data (${data?.javaClass})")
-                if (data is java.util.List<*>) {
-                    files = data.filterIsInstance<java.io.File>()
+        if (psiElements.isEmpty()) {
+            LOG.info("Drop rejected - no supported transferable data")
+            e.rejectDrop()
+            return
+        }
+
+        val action = e.dropAction
+        val acceptedAction = when (action) {
+            DnDConstants.ACTION_COPY -> DnDConstants.ACTION_COPY
+            DnDConstants.ACTION_MOVE -> DnDConstants.ACTION_MOVE
+            else -> DnDConstants.ACTION_COPY_OR_MOVE
+        }
+
+        e.acceptDrop(acceptedAction)
+
+        ApplicationManager.getApplication().invokeLater {
+            try {
+                val selectedAction = when (action) {
+                    DnDConstants.ACTION_COPY -> DnDConstants.ACTION_COPY
+                    DnDConstants.ACTION_MOVE -> DnDConstants.ACTION_MOVE
+                    else -> {
+                        when (Messages.showYesNoCancelDialog(
+                            project,
+                            "Co chcesz zrobić z przeciąganymi elementami?",
+                            "Przenieś lub kopiuj",
+                            "Przenieś",
+                            "Kopiuj",
+                            "Anuluj",
+                            null
+                        )) {
+                            Messages.YES -> DnDConstants.ACTION_MOVE
+                            Messages.NO -> DnDConstants.ACTION_COPY
+                            else -> null
+                        }
+                    }
                 }
-            }
 
-            LOG.info("Files to move: ${files.map { it.path }}")
-
-            if (files.isNotEmpty()) {
-                ApplicationManager.getApplication().invokeLater {
-                    moveFilesToDirectory(files, targetDir)
+                when (selectedAction) {
+                    DnDConstants.ACTION_COPY -> CopyHandler.doCopy(psiElements, targetDir)
+                    DnDConstants.ACTION_MOVE -> com.intellij.refactoring.move.MoveHandler.doMove(
+                        project,
+                        psiElements,
+                        targetDir,
+                        null,
+                        null
+                    )
+                    else -> Unit
                 }
+            } catch (ex: Exception) {
+                LOG.warn("Move failed", ex)
             }
-        } catch (ex: Exception) {
-            LOG.warn("Drop handling failed", ex)
         }
 
         e.dropComplete(true)
         hoverIndex = -1
         repaint()
+    }
+
+    private fun extractPsiElementsFromTransferable(transferable: Transferable): Array<PsiElement> {
+        val elements = mutableListOf<PsiElement>()
+
+        if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+            val data = runCatching { transferable.getTransferData(DataFlavor.javaFileListFlavor) }.getOrNull()
+            if (data is java.util.List<*>) {
+                val files = data.filterIsInstance<java.io.File>()
+                for (file in files) {
+                    val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByIoFile(file) ?: continue
+                    val psi = if (vf.isDirectory) {
+                        com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
+                    } else {
+                        com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
+                    }
+                    if (psi != null) elements.add(psi)
+                }
+            }
+        }
+
+        if (elements.isNotEmpty()) return elements.toTypedArray()
+
+        for (flavor in transferable.transferDataFlavors) {
+            val data = runCatching { transferable.getTransferData(flavor) }.getOrNull() ?: continue
+
+            when (data) {
+                is Array<*> -> {
+                    data.filterIsInstance<VirtualFile>().forEach { vf ->
+                        val psi = if (vf.isDirectory) {
+                            com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
+                        } else {
+                            com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
+                        }
+                        if (psi != null) elements.add(psi)
+                    }
+
+                    data.filterIsInstance<PsiElement>().forEach { elements.add(it) }
+                }
+                is Collection<*> -> {
+                    data.filterIsInstance<VirtualFile>().forEach { vf ->
+                        val psi = if (vf.isDirectory) {
+                            com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
+                        } else {
+                            com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
+                        }
+                        if (psi != null) elements.add(psi)
+                    }
+
+                    data.filterIsInstance<PsiElement>().forEach { elements.add(it) }
+                }
+            }
+        }
+
+        return elements.distinct().toTypedArray()
+    }
+
+    private fun resolveVirtualFileGetter(clazz: Class<*>): Method? {
+        synchronized(virtualFileMethodCacheLock) {
+            if (virtualFileMethodCache.containsKey(clazz)) return virtualFileMethodCache[clazz]
+
+            val method = clazz.methods.firstOrNull { m ->
+                (m.name == "getVirtualFile" || m.name == "virtualFile") &&
+                    m.parameterCount == 0 &&
+                    VirtualFile::class.java.isAssignableFrom(m.returnType)
+            }
+
+            virtualFileMethodCache[clazz] = method
+            return method
+        }
     }
 
     private fun updateDragAutoScroll(y: Int) {
@@ -600,13 +720,26 @@ class StickyHeaderComponent(
 
         val value = if (candidate is AbstractTreeNode<*>) candidate.value else candidate
 
-        return when (value) {
+        val direct = when (value) {
             is PsiDirectory -> value.virtualFile
             is PsiDirectoryContainer -> value.directories.firstOrNull()?.virtualFile
             is PsiFileSystemItem -> value.virtualFile
             is VirtualFile -> value
             else -> null
         }
+
+        if (direct != null) return direct
+
+        val fromValue = runCatching {
+            val clazz = value?.javaClass ?: return@runCatching null
+            resolveVirtualFileGetter(clazz)?.invoke(value) as? VirtualFile
+        }.getOrNull()
+        if (fromValue != null) return fromValue
+
+        return runCatching {
+            val clazz = candidate?.javaClass ?: return@runCatching null
+            resolveVirtualFileGetter(clazz)?.invoke(candidate) as? VirtualFile
+        }.getOrNull()
     }
 
     private fun clearSticky() {
