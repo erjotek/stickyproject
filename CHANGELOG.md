@@ -3,13 +3,21 @@
 # Sticky Project Folder Changelog
 
 ## [Unreleased]
+## [0.9.6] - 2026-01-28
+### Added
+- Works also for Project Files and other tabs
+- Jetbrains IDE 2026.1 EAP support
 
-## [0.9.0] - 2026-01-23
+## [0.9.1] - 2026-01-23
 ### Added
 - Added option to auto-collapse excluded folders with a read-only list of excluded paths.
-
+- Colors in path selector:
+    - gray color - path does not exist in this project,
+    - orange color - other path includes this path
+  
 ### Fixed
 - Added mouse wheel scrolling support over sticky area.
+- Fixed dependencies to ensure greater compatibility with various Jebtrains IDEs.
 
 ## [0.8.2] - 2026-01-20
 ### Fixed
