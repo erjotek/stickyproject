@@ -1,5 +1,6 @@
 package com.github.erjotek.stickyprojectfolder.ui
 
+import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.util.treeView.AbstractTreeNode
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
@@ -193,14 +194,8 @@ class StickyHeaderComponent(
 
         val stickyRow = stickyRows[idx]
         val node = stickyRow.path.lastPathComponent
-        if (node is DefaultMutableTreeNode) {
-            val userObject = node.userObject
-            if (userObject is AbstractTreeNode<*>) {
-                val value = userObject.value
-                if (value is PsiDirectory) return value
-            }
-        }
-        return null
+        val value = extractValueFromNode(node)
+        return value as? PsiDirectory
     }
 
     private fun handleDrop(e: DropTargetDropEvent) {
@@ -348,25 +343,7 @@ class StickyHeaderComponent(
             var ptr: TreePath? = probePath
             while (ptr != null) {
                 val node = ptr.lastPathComponent
-                var isContainer = false
-                
-                if (node is DefaultMutableTreeNode) {
-                    if (node.allowsChildren && !node.isLeaf) {
-                        isContainer = true
-                    } else {
-                        val userObject = node.userObject
-                        if (userObject is AbstractTreeNode<*>) {
-                            val value = userObject.value
-                            if (value is PsiDirectory ||
-                                value is PsiDirectoryContainer ||
-                                value is com.intellij.openapi.project.Project) {
-                                isContainer = true
-                            }
-                        }
-                    }
-                }
-                
-                if (isContainer) {
+                if (isContainerNode(node)) {
                     candidates.add(0, ptr) // Add at beginning to get root-first order
                 }
                 ptr = ptr.parentPath
@@ -473,25 +450,57 @@ class StickyHeaderComponent(
         val parent = path.parentPath ?: return null
         val node = path.lastPathComponent
 
-        if (node is DefaultMutableTreeNode) {
-            val nextNode = node.nextSibling
-            if (nextNode != null) {
-                return parent.pathByAddingChild(nextNode)
-            }
-        } else {
-            val parentNode = parent.lastPathComponent
-            if (parentNode is DefaultMutableTreeNode) {
-                val childCount = parentNode.childCount
-                for (i in 0 until childCount) {
-                    val child = parentNode.getChildAt(i)
-                    if (child === node && i + 1 < childCount) {
-                        return parent.pathByAddingChild(parentNode.getChildAt(i + 1))
-                    }
-                }
+        val parentNode = parent.lastPathComponent
+        val model = tree.model
+        val childCount = model.getChildCount(parentNode)
+
+        for (i in 0 until childCount) {
+            val child = model.getChild(parentNode, i)
+            if (child === node && i + 1 < childCount) {
+                return parent.pathByAddingChild(model.getChild(parentNode, i + 1))
             }
         }
 
         return findNextSiblingOrCousin(parent)
+    }
+
+    private fun isContainerNode(node: Any?): Boolean {
+        if (node == null) return false
+        return !tree.model.isLeaf(node)
+    }
+
+    private fun extractValueFromNode(node: Any?): Any? {
+        val candidate = when (node) {
+            is DefaultMutableTreeNode -> node.userObject
+            else -> node
+        }
+
+        return if (candidate is AbstractTreeNode<*>) {
+            candidate.value
+        } else {
+            candidate
+        }
+    }
+
+    private fun extractVirtualFileFromNode(node: Any?): VirtualFile? {
+        val candidate = when (node) {
+            is DefaultMutableTreeNode -> node.userObject
+            else -> node
+        }
+
+        if (candidate is ProjectViewNode<*>) {
+            return candidate.virtualFile
+        }
+
+        val value = if (candidate is AbstractTreeNode<*>) candidate.value else candidate
+
+        return when (value) {
+            is PsiDirectory -> value.virtualFile
+            is PsiDirectoryContainer -> value.directories.firstOrNull()?.virtualFile
+            is PsiFileSystemItem -> value.virtualFile
+            is VirtualFile -> value
+            else -> null
+        }
     }
 
     private fun clearSticky() {
@@ -540,19 +549,7 @@ class StickyHeaderComponent(
             tree, node, false, true, false, row, false
         ) as JComponent
 
-        var virtualFile: VirtualFile? = null
-        if (node is DefaultMutableTreeNode) {
-            val userObject = node.userObject
-            if (userObject is AbstractTreeNode<*>) {
-                val value = userObject.value
-                when (value) {
-                    is PsiDirectory -> virtualFile = value.virtualFile
-                    is PsiDirectoryContainer -> virtualFile = value.directories.firstOrNull()?.virtualFile
-                    is PsiFileSystemItem -> virtualFile = value.virtualFile
-                    is VirtualFile -> virtualFile = value
-                }
-            }
-        }
+        val virtualFile = extractVirtualFileFromNode(node)
 
         val defaultBg = tree.background ?: UIUtil.getTreeBackground()
         
