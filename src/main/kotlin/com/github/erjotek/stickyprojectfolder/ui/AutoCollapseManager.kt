@@ -2,6 +2,7 @@ package com.github.erjotek.stickyprojectfolder.ui
 
 import com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings
 import com.intellij.ide.projectView.ProjectView
+import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.util.treeView.AbstractTreeNode
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -16,8 +17,10 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiDirectoryContainer
 import com.intellij.psi.PsiFileSystemItem
+import java.lang.reflect.Method
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
+import java.util.WeakHashMap
 import javax.swing.JTree
 import javax.swing.Timer
 import javax.swing.event.TreeSelectionEvent
@@ -36,6 +39,8 @@ class AutoCollapseManager(
     private var treeSelectionListener: TreeSelectionListener? = null
     private var focusListener: FocusAdapter? = null
     private var toolWindowListener: ToolWindowManagerListener? = null
+    private val virtualFileMethodCacheLock = Any()
+    private val virtualFileMethodCache = WeakHashMap<Class<*>, Method?>()
 
     companion object {
         private const val DEBOUNCE_DELAY_MS = 400
@@ -144,28 +149,25 @@ class AutoCollapseManager(
 
     private fun collapsePathInTree(relativePath: String, absolutePath: String) {
         val root = tree.model.root ?: return
-        val treePath = findTreePathForDirectory(root, absolutePath, TreePath(root))
-        
+        val rootPath = TreePath(root)
+        val treePath = findExpandedTreePathForDirectory(absolutePath, rootPath)
+
         if (treePath != null && tree.isExpanded(treePath)) {
             LOG.info("Collapsing: $relativePath")
             tree.collapsePath(treePath)
         }
     }
 
-    private fun findTreePathForDirectory(node: Any, targetPath: String, currentPath: TreePath): TreePath? {
-        val virtualFile = getVirtualFileFromNode(node)
-        
-        if (virtualFile != null && virtualFile.path == targetPath) {
-            return currentPath
+    private fun findExpandedTreePathForDirectory(targetPath: String, rootPath: TreePath): TreePath? {
+        getVirtualFileFromPath(rootPath)?.let { vf ->
+            if (vf.path == targetPath) return rootPath
         }
 
-        if (node is DefaultMutableTreeNode) {
-            for (i in 0 until node.childCount) {
-                val child = node.getChildAt(i)
-                val childPath = currentPath.pathByAddingChild(child)
-                val result = findTreePathForDirectory(child, targetPath, childPath)
-                if (result != null) return result
-            }
+        val expanded = tree.getExpandedDescendants(rootPath) ?: return null
+        while (expanded.hasMoreElements()) {
+            val path = expanded.nextElement()
+            val vf = getVirtualFileFromPath(path) ?: continue
+            if (vf.path == targetPath) return path
         }
 
         return null
@@ -179,19 +181,53 @@ class AutoCollapseManager(
     private fun getVirtualFileFromNode(node: Any?): VirtualFile? {
         if (node == null) return null
 
-        if (node is DefaultMutableTreeNode) {
-            val userObject = node.userObject
-            if (userObject is AbstractTreeNode<*>) {
-                return when (val value = userObject.value) {
-                    is PsiDirectory -> value.virtualFile
-                    is PsiDirectoryContainer -> value.directories.firstOrNull()?.virtualFile
-                    is PsiFileSystemItem -> value.virtualFile
-                    is VirtualFile -> value
-                    else -> null
+        val candidate: Any? = when (node) {
+            is DefaultMutableTreeNode -> node.userObject
+            else -> node
+        }
+
+        if (candidate is ProjectViewNode<*>) {
+            return candidate.virtualFile
+        }
+
+        if (candidate is AbstractTreeNode<*>) {
+            val direct = when (val value = candidate.value) {
+                is PsiDirectory -> value.virtualFile
+                is PsiDirectoryContainer -> value.directories.firstOrNull()?.virtualFile
+                is PsiFileSystemItem -> value.virtualFile
+                is VirtualFile -> value
+                else -> null
+            }
+            if (direct != null) return direct
+
+            resolveVirtualFileByReflection(candidate.value)?.let { return it }
+            resolveVirtualFileByReflection(candidate)?.let { return it }
+            return null
+        }
+
+        resolveVirtualFileByReflection(candidate)?.let { return it }
+        return null
+    }
+
+    private fun resolveVirtualFileByReflection(target: Any?): VirtualFile? {
+        if (target == null) return null
+        val clazz = target.javaClass
+
+        val method = synchronized(virtualFileMethodCacheLock) {
+            if (virtualFileMethodCache.containsKey(clazz)) {
+                virtualFileMethodCache[clazz]
+            } else {
+                val resolved = clazz.methods.firstOrNull { m ->
+                    (m.name == "getVirtualFile" || m.name == "virtualFile") &&
+                        m.parameterCount == 0 &&
+                        VirtualFile::class.java.isAssignableFrom(m.returnType)
                 }
+                virtualFileMethodCache[clazz] = resolved
+                resolved
             }
         }
-        return null
+
+        return runCatching { method?.invoke(target) as? VirtualFile }.getOrNull()
     }
 
     override fun dispose() {
