@@ -19,6 +19,8 @@ import java.awt.*
 import java.awt.datatransfer.DataFlavor
 import java.awt.dnd.*
 import java.awt.event.*
+import java.util.Collections
+import java.util.WeakHashMap
 import javax.swing.*
 import javax.swing.event.TreeModelEvent
 import javax.swing.tree.DefaultMutableTreeNode
@@ -43,6 +45,13 @@ class StickyHeaderComponent(
     private var hoverIndex: Int = -1
     internal var cachedRowHeight: Int = JBUI.scale(22)
 
+    private var dragAutoScrollTimer: Timer? = null
+    private var dragAutoScrollDirection: Int = 0
+
+    private val virtualFileCacheLock = Any()
+    private val virtualFileCache = WeakHashMap<Any, VirtualFile?>()
+    private val virtualFileLoading = Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
+
     // Cache for file colors to avoid slow operations on EDT
     private val colorCache = mutableMapOf<String, Color?>()
 
@@ -55,16 +64,19 @@ class StickyHeaderComponent(
                 val idx = getIndexAt(e.location.y)
                 if (idx != -1 && isWithinTreeBounds(e.location.x)) {
                     e.acceptDrag(DnDConstants.ACTION_MOVE)
+                    updateDragAutoScroll(e.location.y)
                     if (hoverIndex != idx) {
                         hoverIndex = idx
                         repaint()
                     }
                 } else {
+                    stopDragAutoScroll()
                     e.rejectDrag()
                 }
             }
 
             override fun dragExit(dte: DropTargetEvent?) {
+                stopDragAutoScroll()
                 if (hoverIndex != -1) {
                     hoverIndex = -1
                     repaint()
@@ -147,7 +159,7 @@ class StickyHeaderComponent(
 
         val targetBar = if (e.isShiftDown) scrollPane.horizontalScrollBar else scrollPane.verticalScrollBar
         val increment = targetBar.unitIncrement
-        val delta = e.unitsToScroll * increment
+        val delta = e.unitsToScroll * increment * 6
         val max = targetBar.maximum - targetBar.visibleAmount
         val nextValue = (targetBar.value + delta).coerceIn(0, max.coerceAtLeast(0))
 
@@ -201,6 +213,8 @@ class StickyHeaderComponent(
     private fun handleDrop(e: DropTargetDropEvent) {
         LOG.info("handleDrop called at ${e.location}")
 
+        stopDragAutoScroll()
+
         if (!isWithinTreeBounds(e.location.x)) {
             LOG.info("Drop rejected - not within tree bounds")
             e.rejectDrop()
@@ -246,6 +260,98 @@ class StickyHeaderComponent(
         e.dropComplete(true)
         hoverIndex = -1
         repaint()
+    }
+
+    private fun updateDragAutoScroll(y: Int) {
+        if (!isShowing) {
+            stopDragAutoScroll()
+            return
+        }
+
+        val stickyHeight = getStickyHeight()
+        if (stickyHeight <= 0) {
+            stopDragAutoScroll()
+            return
+        }
+
+        val zone = (JBUI.scale(24)).coerceAtMost(stickyHeight / 2)
+        if (zone <= 0) {
+            stopDragAutoScroll()
+            return
+        }
+        val direction = if (y < zone) -1 else 0
+
+        if (direction == 0) {
+            stopDragAutoScroll()
+            return
+        }
+
+        dragAutoScrollDirection = direction
+
+        if (dragAutoScrollTimer == null) {
+            dragAutoScrollTimer = Timer(25) {
+                performDragAutoScrollStep()
+            }.also { timer ->
+                timer.initialDelay = 0
+                timer.start()
+            }
+        }
+    }
+
+    private fun performDragAutoScrollStep() {
+        val sp = scrollPane
+        if (!sp.isShowing) {
+            stopDragAutoScroll()
+            return
+        }
+
+        val bar = sp.verticalScrollBar
+        val max = (bar.maximum - bar.visibleAmount).coerceAtLeast(0)
+        if (max == 0) return
+
+        val step = (bar.unitIncrement * 6).coerceAtLeast(JBUI.scale(20))
+        val nextValue = (bar.value + (step * dragAutoScrollDirection)).coerceIn(0, max)
+        if (nextValue != bar.value) {
+            bar.value = nextValue
+        }
+    }
+
+    private fun resolveVirtualFileForPainting(node: Any?): VirtualFile? {
+        if (node == null) return null
+
+        val cached = synchronized(virtualFileCacheLock) {
+            if (virtualFileCache.containsKey(node)) {
+                return@synchronized virtualFileCache[node]
+            }
+
+            if (!virtualFileLoading.contains(node)) {
+                virtualFileLoading.add(node)
+                ApplicationManager.getApplication().executeOnPooledThread {
+                    val vf = ReadAction.compute<VirtualFile?, Nothing> {
+                        extractVirtualFileFromNode(node)
+                    }
+
+                    synchronized(virtualFileCacheLock) {
+                        virtualFileCache[node] = vf
+                        virtualFileLoading.remove(node)
+                    }
+
+                    ApplicationManager.getApplication().invokeLater {
+                        repaint()
+                    }
+                }
+            }
+
+            return@synchronized null
+        }
+
+        return cached
+    }
+
+    private fun stopDragAutoScroll() {
+        dragAutoScrollTimer?.stop()
+        dragAutoScrollTimer = null
+        dragAutoScrollDirection = 0
     }
 
     private fun moveFilesToDirectory(files: List<java.io.File>, targetDir: PsiDirectory) {
@@ -549,7 +655,7 @@ class StickyHeaderComponent(
             tree, node, false, true, false, row, false
         ) as JComponent
 
-        val virtualFile = extractVirtualFileFromNode(node)
+        val virtualFile = resolveVirtualFileForPainting(node)
 
         val defaultBg = tree.background ?: UIUtil.getTreeBackground()
         

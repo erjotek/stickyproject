@@ -294,6 +294,12 @@ class StickyScrollManager(private val project: Project) : Disposable {
             return
         }
 
+        val stickyHeight = sticky.getStickyHeight()
+        if (stickyHeight <= 0) {
+            sticky.isVisible = false
+            return
+        }
+
         sticky.isVisible = true
 
         val viewport = sp.viewport
@@ -317,7 +323,7 @@ class StickyScrollManager(private val project: Project) : Disposable {
         val x = viewportLocationOnScreen.x - layeredPaneLocationOnScreen.x
         val y = viewportLocationOnScreen.y - layeredPaneLocationOnScreen.y
 
-        sticky.setBounds(x, y, viewportBounds.width, viewportBounds.height)
+        sticky.setBounds(x, y, viewportBounds.width, stickyHeight)
     }
 
     private fun detach() {

@@ -3,10 +3,16 @@
 # Sticky Project Folder Changelog
 
 ## [Unreleased]
+
 ## [0.9.6] - 2026-01-28
 ### Added
-- Works also for Project Files and other tabs
-- Jetbrains IDE 2026.1 EAP support
+- Works also in the Project Files tab and other project view tabs
+- JetBrains IDE 2026.1 EAP support
+- Added missing auto-scroll when dragging near the top edge of sticky area.
+
+### Fixed
+- Fixed exceptions on EDT during painting sticky rows 
+- Improved mouse wheel scrolling speed over sticky area.
 
 ## [0.9.1] - 2026-01-23
 ### Added
