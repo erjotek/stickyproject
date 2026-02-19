@@ -8,9 +8,23 @@
 
     <resource-bundle>messages.MyBundle</resource-bundle>
 
+    <actions>
+        <action id="StickyProject.AddToAutoCollapse"
+                class="com.github.erjotek.stickyprojectfolder.actions.AddToAutoCollapseAction"
+                text="Add to Auto-Collapse">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+        <action id="StickyProject.RemoveFromAutoCollapse"
+                class="com.github.erjotek.stickyprojectfolder.actions.RemoveFromAutoCollapseAction"
+                text="Remove from Auto-Collapse">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+    </actions>
+
     <extensions defaultExtensionNs="com.intellij">
         <postStartupActivity implementation="com.github.erjotek.stickyprojectfolder.startup.MyProjectActivity" />
         <applicationService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings"/>
+        <projectService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.StickyProjectProjectSettings"/>
         <projectConfigurable parentId="tools" instance="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
                              id="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
                              displayName="Sticky Project Folder"/>
