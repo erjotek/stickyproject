@@ -1,6 +1,8 @@
 package com.github.erjotek.stickyprojectfolder.ui
 
+import com.github.erjotek.stickyprojectfolder.settings.StickyProjectProjectSettings
 import com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings
+import com.github.erjotek.stickyprojectfolder.util.StickyScrollUtil
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.util.treeView.AbstractTreeNode
@@ -17,11 +19,14 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiDirectoryContainer
 import com.intellij.psi.PsiFileSystemItem
-import java.lang.reflect.Method
+import java.awt.Point
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
+import java.lang.reflect.Method
 import java.util.WeakHashMap
+import javax.swing.JScrollPane
 import javax.swing.JTree
+import javax.swing.SwingUtilities
 import javax.swing.Timer
 import javax.swing.event.TreeSelectionEvent
 import javax.swing.event.TreeSelectionListener
@@ -39,11 +44,111 @@ class AutoCollapseManager(
     private var treeSelectionListener: TreeSelectionListener? = null
     private var focusListener: FocusAdapter? = null
     private var toolWindowListener: ToolWindowManagerListener? = null
-    private val virtualFileMethodCacheLock = Any()
-    private val virtualFileMethodCache = WeakHashMap<Class<*>, Method?>()
 
     companion object {
         private const val DEBOUNCE_DELAY_MS = 400
+        private val virtualFileMethodCacheLock = Any()
+        private val virtualFileMethodCache = WeakHashMap<Class<*>, Method?>()
+        private val selectionAnchorCacheLock = Any()
+        private val selectionAnchors = WeakHashMap<JTree, SelectionAnchor>()
+
+        private data class SelectionAnchor(
+            val filePath: String,
+            val offsetYInViewport: Int,
+            val viewportX: Int
+        )
+
+        @Volatile
+        private var suppressUntilEpochMs: Long = 0
+
+        fun suppressForNavigation(durationMs: Int) {
+            if (durationMs <= 0) return
+            val now = System.currentTimeMillis()
+            val next = now + durationMs
+            if (next > suppressUntilEpochMs) {
+                suppressUntilEpochMs = next
+            }
+        }
+
+        fun isNavigationSuppressed(): Boolean {
+            return isSuppressed()
+        }
+
+        private fun isSuppressed(): Boolean {
+            return System.currentTimeMillis() < suppressUntilEpochMs
+        }
+    }
+
+    private fun recordSelectionAnchor() {
+        val selectionPath = tree.selectionPath ?: return
+        val selectedVirtualFile = getVirtualFileFromPath(selectionPath) ?: return
+
+        val scrollPane = SwingUtilities.getAncestorOfClass(JScrollPane::class.java, tree) as? JScrollPane ?: return
+        val viewport = scrollPane.viewport ?: return
+
+        val row = tree.getRowForPath(selectionPath)
+        if (row == -1) return
+
+        val rowBounds = tree.getRowBounds(row) ?: return
+        val visibleRect = tree.visibleRect
+        if (!visibleRect.intersects(rowBounds)) return
+
+        val offsetY = rowBounds.y - viewport.viewPosition.y
+        synchronized(selectionAnchorCacheLock) {
+            selectionAnchors[tree] = SelectionAnchor(selectedVirtualFile.path, offsetY, viewport.viewPosition.x)
+        }
+    }
+
+    private fun restoreViewportPosition(scrollPane: JScrollPane, requestedPosition: Point) {
+        val viewport = scrollPane.viewport ?: return
+
+        val extent = viewport.extentSize
+        val viewSize = tree.preferredSize
+
+        val maxX = (viewSize.width - extent.width).coerceAtLeast(0)
+        val maxY = (viewSize.height - extent.height).coerceAtLeast(0)
+
+        val clampedX = requestedPosition.x.coerceIn(0, maxX)
+        val clampedY = requestedPosition.y.coerceIn(0, maxY)
+
+        viewport.viewPosition = Point(clampedX, clampedY)
+    }
+
+    private fun restoreViewportPositionBySelectionAnchor(scrollPane: JScrollPane, anchor: SelectionAnchor) {
+        val viewport = scrollPane.viewport ?: return
+        val selectionPath = tree.selectionPath ?: return
+        val selectedVirtualFile = getVirtualFileFromPath(selectionPath) ?: return
+        if (selectedVirtualFile.path != anchor.filePath) return
+
+        val row = tree.getRowForPath(selectionPath)
+        if (row == -1) return
+
+        val rowBounds = tree.getRowBounds(row) ?: return
+        val requestedY = rowBounds.y - anchor.offsetYInViewport
+
+        val extent = viewport.extentSize
+        val viewSize = tree.preferredSize
+
+        val maxX = (viewSize.width - extent.width).coerceAtLeast(0)
+        val maxY = (viewSize.height - extent.height).coerceAtLeast(0)
+
+        val clampedX = anchor.viewportX.coerceIn(0, maxX)
+        val clampedY = requestedY.coerceIn(0, maxY)
+
+        viewport.viewPosition = Point(clampedX, clampedY)
+    }
+
+    private fun ensureSelectionVisible() {
+        val selectionPath = tree.selectionPath ?: return
+        val row = tree.getRowForPath(selectionPath)
+        if (row == -1) return
+
+        val rowBounds = tree.getRowBounds(row) ?: return
+        val visibleRect = tree.visibleRect
+        if (visibleRect.intersects(rowBounds)) return
+
+        val rowHeight = if (tree.rowHeight > 0) tree.rowHeight else com.intellij.util.ui.JBUI.scale(22)
+        StickyScrollUtil.scrollToMakeVisibleBelowSticky(tree, selectionPath, rowHeight)
     }
 
     fun install() {
@@ -73,10 +178,12 @@ class AutoCollapseManager(
     }
 
     private fun onSelectionChanged(e: TreeSelectionEvent) {
+        recordSelectionAnchor()
         scheduleCollapseCheck()
     }
 
     private fun scheduleCollapseCheck() {
+        if (isSuppressed()) return
         debounceTimer?.stop()
         debounceTimer = Timer(DEBOUNCE_DELAY_MS) {
             ApplicationManager.getApplication().invokeLater({
@@ -90,6 +197,7 @@ class AutoCollapseManager(
     }
 
     private fun performCollapseCheck() {
+        if (isSuppressed()) return
         val settings = StickyProjectSettings.instance
         if (!settings.state.autoCollapseEnabled) return
 
@@ -101,7 +209,7 @@ class AutoCollapseManager(
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
         }
-        if (settings.state.autoCollapseIncludeExcluded) {
+        if (StickyProjectProjectSettings.getInstance(project).state.autoCollapseIncludeExcluded) {
             pathsToCollapse += getExcludedPaths(basePath)
         }
 
@@ -117,6 +225,13 @@ class AutoCollapseManager(
         val selectedVirtualFile = getVirtualFileFromPath(selectedPath)
         val selectedFilePath = selectedVirtualFile?.path
 
+        val scrollPane = SwingUtilities.getAncestorOfClass(JScrollPane::class.java, tree) as? JScrollPane
+        val viewport = scrollPane?.viewport
+        val viewportPositionBeforeCollapse = viewport?.viewPosition?.let { Point(it) }
+        val selectionAnchor = synchronized(selectionAnchorCacheLock) { selectionAnchors[tree] }
+        val canRestoreByAnchor = selectionAnchor != null && selectedFilePath != null && selectionAnchor.filePath == selectedFilePath
+        var didCollapseAny = false
+
         for (relativePath in normalizedPathsToCollapse) {
             val absolutePath = "$basePath/$relativePath"
             
@@ -124,9 +239,26 @@ class AutoCollapseManager(
                 (selectedFilePath.startsWith("$absolutePath/") || selectedFilePath == absolutePath)
 
             if (!isSelectedInsideThisPath) {
-                collapsePathInTree(relativePath, absolutePath)
+                didCollapseAny = collapsePathInTree(relativePath, absolutePath) || didCollapseAny
             }
         }
+
+        if (!didCollapseAny) return
+        if (scrollPane == null || viewportPositionBeforeCollapse == null) return
+
+        tree.revalidate()
+        tree.repaint()
+
+        ApplicationManager.getApplication().invokeLater({
+            if (project.isDisposed) return@invokeLater
+
+            if (canRestoreByAnchor && selectionAnchor != null) {
+                restoreViewportPositionBySelectionAnchor(scrollPane, selectionAnchor)
+            } else {
+                restoreViewportPosition(scrollPane, viewportPositionBeforeCollapse)
+            }
+            ensureSelectionVisible()
+        }, project.disposed)
     }
 
     private fun getExcludedPaths(basePath: String): List<String> {
@@ -147,15 +279,18 @@ class AutoCollapseManager(
             .filter { it.isNotBlank() }
     }
 
-    private fun collapsePathInTree(relativePath: String, absolutePath: String) {
-        val root = tree.model.root ?: return
+    private fun collapsePathInTree(relativePath: String, absolutePath: String): Boolean {
+        val root = tree.model.root ?: return false
         val rootPath = TreePath(root)
         val treePath = findExpandedTreePathForDirectory(absolutePath, rootPath)
 
         if (treePath != null && tree.isExpanded(treePath)) {
             LOG.info("Collapsing: $relativePath")
             tree.collapsePath(treePath)
+            return true
         }
+
+        return false
     }
 
     private fun findExpandedTreePathForDirectory(targetPath: String, rootPath: TreePath): TreePath? {
