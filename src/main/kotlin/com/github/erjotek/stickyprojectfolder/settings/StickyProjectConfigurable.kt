@@ -14,10 +14,13 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
+import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.io.File
 import javax.swing.*
+import javax.swing.border.TitledBorder
 
 class StickyProjectConfigurable(
     private val project: Project
@@ -40,9 +43,9 @@ class StickyProjectConfigurable(
 
     override fun createComponent(): JComponent {
         maxStickyLimitSpinner = JBIntSpinner(10, 1, 100)
-        autoCollapseEnabledCheckbox = JBCheckBox("Enable auto-collapse directories")
+        autoCollapseEnabledCheckbox = JBCheckBox("Enable auto-collapse directories (global settings)")
         autoCollapseIncludeExcludedCheckbox = JBCheckBox("Auto-collapse excluded folders")
-        
+
         pathsListModel = DefaultListModel<String>()
         pathsList = JBList<String>(pathsListModel!!).apply {
             cellRenderer = PathListCellRenderer(pathsListModel!!)
@@ -58,19 +61,39 @@ class StickyProjectConfigurable(
             preferredSize = Dimension(0, JBUI.scale(150))
         }
 
+        val legendPanel = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)).apply {
+            val grayDot = JLabel("\u25CF").apply {
+                foreground = JBColor.namedColor("Label.disabledForeground", JBColor.GRAY)
+                font = font.deriveFont(font.size2D * 0.85f)
+            }
+            val grayLabel = JLabel("Ignored – does not exist in this project").apply {
+                font = font.deriveFont(font.size2D * 0.85f)
+            }
+            val orangeDot = JLabel("\u25CF").apply {
+                foreground = JBColor.namedColor("ColorPalette.YELLOW", JBColor(0x8A6D00, 0xFFD24D))
+                font = font.deriveFont(font.size2D * 0.85f)
+            }
+            val orangeLabel = JLabel("Ignored – covered by another path").apply {
+                font = font.deriveFont(font.size2D * 0.85f)
+            }
+            add(grayDot)
+            add(grayLabel)
+            add(Box.createHorizontalStrut(JBUI.scale(12)))
+            add(orangeDot)
+            add(orangeLabel)
+        }
+
         excludedPathsListModel = DefaultListModel<String>()
         excludedPathsList = JBList<String>(excludedPathsListModel!!).apply {
             cellRenderer = PathListCellRenderer(excludedPathsListModel!!)
             selectionMode = ListSelectionModel.SINGLE_SELECTION
         }
-        excludedReadOnlyLabel = JBLabel("Read-only (from project settings)")
         excludedListPanel = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             add(JScrollPane(excludedPathsList).apply {
                 preferredSize = Dimension(0, JBUI.scale(120))
             })
             add(Box.createVerticalStrut(JBUI.scale(6)))
-            add(excludedReadOnlyLabel)
         }
         updateExcludedPathsModel()
 
@@ -78,13 +101,47 @@ class StickyProjectConfigurable(
             updateExcludedPanelState()
         }
 
-        mySettingsComponent = FormBuilder.createFormBuilder()
-            .addLabeledComponent(JBLabel("Max sticky directories (1-100):"), maxStickyLimitSpinner!!, 1, false)
-            .addSeparator()
-            .addComponent(autoCollapseEnabledCheckbox!!, JBUI.scale(10))
+        val separatorPanel = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(JBUI.scale(10), 0, JBUI.scale(4), 0)
+            add(JSeparator(), BorderLayout.CENTER)
+        }
+
+        val autoCollapseInnerPanel = FormBuilder.createFormBuilder()
+            .addComponent(autoCollapseEnabledCheckbox!!, JBUI.scale(4))
             .addLabeledComponent(JBLabel("Auto-collapse paths (relative to project root):"), listPanel, 1, true)
-            .addComponent(autoCollapseIncludeExcludedCheckbox!!, JBUI.scale(6))
-            .addLabeledComponent(JBLabel("Excluded paths (from project settings):"), excludedListPanel!!, 1, true)
+            .addComponent(legendPanel, JBUI.scale(2))
+            .addComponent(separatorPanel, JBUI.scale(2))
+            .addComponent(autoCollapseIncludeExcludedCheckbox!!, JBUI.scale(2))
+            .addLabeledComponent(JBLabel("Excluded paths (read-only list from project settings):"), excludedListPanel!!, 1, true)
+            .panel
+
+        val autoCollapseFieldset = JPanel(BorderLayout()).apply {
+            border = BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "Auto-collapse settings",
+                TitledBorder.DEFAULT_JUSTIFICATION,
+                TitledBorder.DEFAULT_POSITION
+            )
+            add(autoCollapseInnerPanel, BorderLayout.CENTER)
+        }
+
+        val stickyInnerPanel = FormBuilder.createFormBuilder()
+            .addLabeledComponent(JBLabel("Max sticky directories (1-100):"), maxStickyLimitSpinner!!, 1, false)
+            .panel
+
+        val stickyFieldset = JPanel(BorderLayout()).apply {
+            border = BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "Sticky settings",
+                TitledBorder.DEFAULT_JUSTIFICATION,
+                TitledBorder.DEFAULT_POSITION
+            )
+            add(stickyInnerPanel, BorderLayout.CENTER)
+        }
+
+        mySettingsComponent = FormBuilder.createFormBuilder()
+            .addComponent(stickyFieldset, JBUI.scale(4))
+            .addComponent(autoCollapseFieldset, JBUI.scale(8))
             .addComponentFillVertically(JPanel(), 0)
             .panel
 
@@ -211,25 +268,28 @@ class StickyProjectConfigurable(
 
     override fun isModified(): Boolean {
         val settings = StickyProjectSettings.instance
+        val projectSettings = StickyProjectProjectSettings.getInstance(project)
         return maxStickyLimitSpinner?.number != settings.state.maxStickyLimit ||
             autoCollapseEnabledCheckbox?.isSelected != settings.state.autoCollapseEnabled ||
-            autoCollapseIncludeExcludedCheckbox?.isSelected != settings.state.autoCollapseIncludeExcluded ||
+            autoCollapseIncludeExcludedCheckbox?.isSelected != projectSettings.state.autoCollapseIncludeExcluded ||
             getPathsFromModel() != settings.state.autoCollapsePaths
     }
 
     override fun apply() {
         val settings = StickyProjectSettings.instance
+        val projectSettings = StickyProjectProjectSettings.getInstance(project)
         settings.state.maxStickyLimit = maxStickyLimitSpinner?.number ?: 10
         settings.state.autoCollapseEnabled = autoCollapseEnabledCheckbox?.isSelected ?: true
-        settings.state.autoCollapseIncludeExcluded = autoCollapseIncludeExcludedCheckbox?.isSelected ?: false
+        projectSettings.state.autoCollapseIncludeExcluded = autoCollapseIncludeExcludedCheckbox?.isSelected ?: false
         settings.state.autoCollapsePaths = getPathsFromModel()
     }
 
     override fun reset() {
         val settings = StickyProjectSettings.instance
+        val projectSettings = StickyProjectProjectSettings.getInstance(project)
         maxStickyLimitSpinner?.number = settings.state.maxStickyLimit
         autoCollapseEnabledCheckbox?.isSelected = settings.state.autoCollapseEnabled
-        autoCollapseIncludeExcludedCheckbox?.isSelected = settings.state.autoCollapseIncludeExcluded
+        autoCollapseIncludeExcludedCheckbox?.isSelected = projectSettings.state.autoCollapseIncludeExcluded
         setPathsToModel(settings.state.autoCollapsePaths)
         updateExcludedPathsModel()
         updateExcludedPanelState()
