@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [0.9.12] - 2026-02-20
+### Added
+- Right-clicking a directory in the Project View now shows **"Add to Auto-Collapse"** or **"Remove from Auto-Collapse"** in the context menu, allowing quick management of the auto-collapse list without opening Settings.
+- Redesigned settings page.
+
+### Fixed
+- Selected file position in the Project panel no longer shifts when auto-collapse occurs above it. 
+
 ## [0.9.6] - 2026-01-28
 ### Added
 - Works also in the Project Files tab and other project view tabs
