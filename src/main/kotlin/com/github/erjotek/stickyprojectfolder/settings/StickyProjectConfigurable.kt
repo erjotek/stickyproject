@@ -43,10 +43,69 @@ class StickyProjectConfigurable(
     override fun getPreferredFocusedComponent(): JComponent? = maxStickyLimitSpinner
 
     override fun createComponent(): JComponent {
+        mySettingsComponent = FormBuilder.createFormBuilder()
+            .addComponent(createStickySettingsPanel(), JBUI.scale(4))
+            .addComponent(createAutoCollapseSettingsPanel(), JBUI.scale(8))
+            .addComponentFillVertically(JPanel(), 0)
+            .panel
+
+        updateExcludedPanelState()
+
+        return mySettingsComponent!!
+    }
+
+    private fun createStickySettingsPanel(): JPanel {
         maxStickyLimitSpinner = JBIntSpinner(10, 1, 100)
+
+        val stickyInnerPanel = FormBuilder.createFormBuilder()
+            .addLabeledComponent(JBLabel("Max sticky directories (1-100):"), maxStickyLimitSpinner!!, 1, false)
+            .panel
+
+        return JPanel(BorderLayout()).apply {
+            border = BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "Sticky settings",
+                TitledBorder.DEFAULT_JUSTIFICATION,
+                TitledBorder.DEFAULT_POSITION
+            )
+            add(stickyInnerPanel, BorderLayout.CENTER)
+        }
+    }
+
+    private fun createAutoCollapseSettingsPanel(): JPanel {
         autoCollapseEnabledCheckbox = JBCheckBox("Enable auto-collapse directories (global settings)")
         autoCollapseIncludeExcludedCheckbox = JBCheckBox("Auto-collapse excluded folders")
 
+        autoCollapseIncludeExcludedCheckbox?.addActionListener {
+            updateExcludedPanelState()
+        }
+
+        val separatorPanel = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(JBUI.scale(10), 0, JBUI.scale(4), 0)
+            add(JSeparator(), BorderLayout.CENTER)
+        }
+
+        val autoCollapseInnerPanel = FormBuilder.createFormBuilder()
+            .addComponent(autoCollapseEnabledCheckbox!!, JBUI.scale(4))
+            .addLabeledComponent(JBLabel("Auto-collapse paths (relative to project root):"), createPathsListPanel(), 1, true)
+            .addComponent(createLegendPanel(), JBUI.scale(2))
+            .addComponent(separatorPanel, JBUI.scale(2))
+            .addComponent(autoCollapseIncludeExcludedCheckbox!!, JBUI.scale(2))
+            .addLabeledComponent(JBLabel("Excluded paths (read-only list from project settings):"), createExcludedListPanel(), 1, true)
+            .panel
+
+        return JPanel(BorderLayout()).apply {
+            border = BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "Auto-collapse settings",
+                TitledBorder.DEFAULT_JUSTIFICATION,
+                TitledBorder.DEFAULT_POSITION
+            )
+            add(autoCollapseInnerPanel, BorderLayout.CENTER)
+        }
+    }
+
+    private fun createPathsListPanel(): JPanel {
         pathsListModel = DefaultListModel<String>()
         pathsList = JBList<String>(pathsListModel!!).apply {
             cellRenderer = PathListCellRenderer(pathsListModel!!)
@@ -58,11 +117,13 @@ class StickyProjectConfigurable(
             .setRemoveAction { removePath() }
             .disableUpDownActions()
 
-        val listPanel = toolbarDecorator.createPanel().apply {
+        return toolbarDecorator.createPanel().apply {
             preferredSize = Dimension(0, JBUI.scale(150))
         }
+    }
 
-        val legendPanel = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)).apply {
+    private fun createLegendPanel(): JPanel {
+        return JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(8), 0)).apply {
             val grayDot = JLabel("\u25CF").apply {
                 foreground = JBColor.namedColor("Label.disabledForeground", JBColor.GRAY)
                 font = font.deriveFont(font.size2D * 0.85f)
@@ -83,7 +144,9 @@ class StickyProjectConfigurable(
             add(orangeDot)
             add(orangeLabel)
         }
+    }
 
+    private fun createExcludedListPanel(): JPanel {
         excludedPathsListModel = DefaultListModel<String>()
         excludedPathsList = JBList<String>(excludedPathsListModel!!).apply {
             cellRenderer = PathListCellRenderer(excludedPathsListModel!!)
@@ -97,58 +160,7 @@ class StickyProjectConfigurable(
             add(Box.createVerticalStrut(JBUI.scale(6)))
         }
         updateExcludedPathsModel()
-
-        autoCollapseIncludeExcludedCheckbox?.addActionListener {
-            updateExcludedPanelState()
-        }
-
-        val separatorPanel = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.empty(JBUI.scale(10), 0, JBUI.scale(4), 0)
-            add(JSeparator(), BorderLayout.CENTER)
-        }
-
-        val autoCollapseInnerPanel = FormBuilder.createFormBuilder()
-            .addComponent(autoCollapseEnabledCheckbox!!, JBUI.scale(4))
-            .addLabeledComponent(JBLabel("Auto-collapse paths (relative to project root):"), listPanel, 1, true)
-            .addComponent(legendPanel, JBUI.scale(2))
-            .addComponent(separatorPanel, JBUI.scale(2))
-            .addComponent(autoCollapseIncludeExcludedCheckbox!!, JBUI.scale(2))
-            .addLabeledComponent(JBLabel("Excluded paths (read-only list from project settings):"), excludedListPanel!!, 1, true)
-            .panel
-
-        val autoCollapseFieldset = JPanel(BorderLayout()).apply {
-            border = BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "Auto-collapse settings",
-                TitledBorder.DEFAULT_JUSTIFICATION,
-                TitledBorder.DEFAULT_POSITION
-            )
-            add(autoCollapseInnerPanel, BorderLayout.CENTER)
-        }
-
-        val stickyInnerPanel = FormBuilder.createFormBuilder()
-            .addLabeledComponent(JBLabel("Max sticky directories (1-100):"), maxStickyLimitSpinner!!, 1, false)
-            .panel
-
-        val stickyFieldset = JPanel(BorderLayout()).apply {
-            border = BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "Sticky settings",
-                TitledBorder.DEFAULT_JUSTIFICATION,
-                TitledBorder.DEFAULT_POSITION
-            )
-            add(stickyInnerPanel, BorderLayout.CENTER)
-        }
-
-        mySettingsComponent = FormBuilder.createFormBuilder()
-            .addComponent(stickyFieldset, JBUI.scale(4))
-            .addComponent(autoCollapseFieldset, JBUI.scale(8))
-            .addComponentFillVertically(JPanel(), 0)
-            .panel
-
-        updateExcludedPanelState()
-
-        return mySettingsComponent!!
+        return excludedListPanel!!
     }
 
     private fun addPath() {
