@@ -226,8 +226,9 @@ class StickyHeaderComponent(
         if (value is PsiDirectory) return value
 
         val vf = extractVirtualFileFromNode(node)
-        if (vf != null && vf.isDirectory) {
-            return com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
+        if (vf != null) {
+            val element = resolvePsiElement(vf)
+            if (element is PsiDirectory) return element
         }
 
         return null
@@ -329,11 +330,7 @@ class StickyHeaderComponent(
                 val files = data.filterIsInstance<java.io.File>()
                 for (file in files) {
                     val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByIoFile(file) ?: continue
-                    val psi = if (vf.isDirectory) {
-                        com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
-                    } else {
-                        com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
-                    }
+                    val psi = resolvePsiElement(vf)
                     if (psi != null) elements.add(psi)
                 }
             }
@@ -347,11 +344,7 @@ class StickyHeaderComponent(
             when (data) {
                 is Array<*> -> {
                     data.filterIsInstance<VirtualFile>().forEach { vf ->
-                        val psi = if (vf.isDirectory) {
-                            com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
-                        } else {
-                            com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
-                        }
+                        val psi = resolvePsiElement(vf)
                         if (psi != null) elements.add(psi)
                     }
 
@@ -359,11 +352,7 @@ class StickyHeaderComponent(
                 }
                 is Collection<*> -> {
                     data.filterIsInstance<VirtualFile>().forEach { vf ->
-                        val psi = if (vf.isDirectory) {
-                            com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
-                        } else {
-                            com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
-                        }
+                        val psi = resolvePsiElement(vf)
                         if (psi != null) elements.add(psi)
                     }
 
@@ -373,6 +362,14 @@ class StickyHeaderComponent(
         }
 
         return elements.distinct().toTypedArray()
+    }
+
+    private fun resolvePsiElement(vf: VirtualFile): PsiElement? {
+        return if (vf.isDirectory) {
+            com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
+        } else {
+            com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
+        }
     }
 
     private fun resolveVirtualFileGetter(clazz: Class<*>): Method? {
@@ -487,13 +484,7 @@ class StickyHeaderComponent(
         val psiElements = files.mapNotNull { file ->
             ReadAction.compute<com.intellij.psi.PsiElement?, Nothing> {
                 val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByIoFile(file)
-                if (vf != null) {
-                    if (vf.isDirectory) {
-                        com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
-                    } else {
-                        com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
-                    }
-                } else null
+                if (vf != null) resolvePsiElement(vf) else null
             }
         }.toTypedArray()
 
