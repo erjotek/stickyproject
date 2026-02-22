@@ -22,6 +22,8 @@ import java.awt.FlowLayout
 import java.io.File
 import javax.swing.*
 import javax.swing.border.TitledBorder
+import javax.swing.event.ListDataEvent
+import javax.swing.event.ListDataListener
 
 class StickyProjectConfigurable(
     private val project: Project
@@ -182,20 +184,6 @@ class StickyProjectConfigurable(
         }
     }
 
-    private fun isNestedPath(value: String, model: ListModel<String>): Boolean {
-        val normalizedValue = value.trimEnd('/')
-        if (normalizedValue.isEmpty()) return false
-        for (i in 0 until model.size) {
-            val other = model.getElementAt(i)
-            val normalizedOther = other.trimEnd('/')
-            if (normalizedOther.isEmpty() || normalizedOther == normalizedValue) continue
-            if (normalizedValue.startsWith("$normalizedOther/")) {
-                return true
-            }
-        }
-        return false
-    }
-
     private fun removePath() {
         val selectedIndex = pathsList?.selectedIndex ?: return
         if (selectedIndex >= 0) {
@@ -319,6 +307,21 @@ class StickyProjectConfigurable(
     ) : ListCellRenderer<String> {
         private val label = JLabel()
         private val folderIcon = UIManager.getIcon("FileView.directoryIcon")
+        private var nestedPaths: Set<String> = emptySet()
+
+        init {
+            model.addListDataListener(object : ListDataListener {
+                override fun intervalAdded(e: ListDataEvent) = recalculate()
+                override fun intervalRemoved(e: ListDataEvent) = recalculate()
+                override fun contentsChanged(e: ListDataEvent) = recalculate()
+            })
+            recalculate()
+        }
+
+        private fun recalculate() {
+            val paths = (0 until model.size).map { model.getElementAt(it) }
+            nestedPaths = PathUtils.calculateNestedPaths(paths)
+        }
 
         override fun getListCellRendererComponent(
             list: JList<out String>?,
@@ -339,7 +342,7 @@ class StickyProjectConfigurable(
                 false
             }
 
-            val isNested = value?.let { isNestedPath(it, model) } == true
+            val isNested = value?.let { nestedPaths.contains(it) } == true
 
             if (isSelected) {
                 label.background = list?.selectionBackground
