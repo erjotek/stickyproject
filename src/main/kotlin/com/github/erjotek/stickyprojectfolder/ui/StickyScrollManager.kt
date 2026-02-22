@@ -262,11 +262,7 @@ class StickyScrollManager(private val project: Project) : Disposable {
             return
         }
 
-        val targetY = if (scrollingDown || rowBounds.y < effectiveVisibleTop) {
-            rowBounds.y + rowBounds.height / 2 - effectiveVisibleHeight / 2
-        } else {
-            rowBounds.y + rowBounds.height / 2 - effectiveVisibleHeight / 2
-        }
+        val targetY = rowBounds.y + rowBounds.height / 2 - effectiveVisibleHeight / 2
 
         val maxScroll = tree.height - visibleRect.height
         val clampedY = targetY.coerceIn(0, maxScroll.coerceAtLeast(0))
