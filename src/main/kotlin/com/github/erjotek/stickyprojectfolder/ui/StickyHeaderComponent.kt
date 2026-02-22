@@ -2,6 +2,7 @@ package com.github.erjotek.stickyprojectfolder.ui
 
 import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.util.treeView.AbstractTreeNode
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
@@ -16,6 +17,8 @@ import com.intellij.refactoring.copy.CopyHandler
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.FileColorManager
 import com.intellij.ui.JBColor
+import com.intellij.util.Alarm
+import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.*
@@ -39,7 +42,7 @@ class StickyHeaderComponent(
     private val scrollPane: JScrollPane,
     private val onBoundsUpdateNeeded: () -> Unit = {},
     private val onStickyHeaderClick: () -> Unit = {}
-) : JComponent() {
+) : JComponent(), Disposable {
 
     fun getTree(): JTree = tree
 
@@ -56,6 +59,10 @@ class StickyHeaderComponent(
     private val virtualFileCacheLock = Any()
     private val virtualFileCache = WeakHashMap<Any, VirtualFile?>()
     private val virtualFileLoading = Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
+    private val colorLoading = mutableSetOf<String>()
+
+    private val backgroundExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor("StickyHeaderExecutor", 2)
+    private val repaintAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
 
     private val virtualFileMethodCacheLock = Any()
     private val virtualFileMethodCache = WeakHashMap<Class<*>, Method?>()
@@ -446,7 +453,7 @@ class StickyHeaderComponent(
 
             if (!virtualFileLoading.contains(node)) {
                 virtualFileLoading.add(node)
-                ApplicationManager.getApplication().executeOnPooledThread {
+                backgroundExecutor.execute {
                     val vf = ReadAction.compute<VirtualFile?, Nothing> {
                         extractVirtualFileFromNode(node)
                     }
@@ -456,9 +463,8 @@ class StickyHeaderComponent(
                         virtualFileLoading.remove(node)
                     }
 
-                    ApplicationManager.getApplication().invokeLater {
-                        repaint()
-                    }
+                    repaintAlarm.cancelAllRequests()
+                    repaintAlarm.addRequest({ repaint() }, 50)
                 }
             }
 
@@ -655,6 +661,11 @@ class StickyHeaderComponent(
         }
     }
 
+    override fun dispose() {
+        repaintAlarm.cancelAllRequests()
+        backgroundExecutor.shutdownNow()
+    }
+
     fun isAffectedBy(e: TreeModelEvent): Boolean {
         if (stickyRows.isEmpty()) return false
 
@@ -794,29 +805,35 @@ class StickyHeaderComponent(
         
         val bgColor = if (virtualFile != null) {
             val cacheKey = virtualFile.path
-            if (colorCache.containsKey(cacheKey)) {
-                colorCache[cacheKey] ?: defaultBg
-            } else {
-                // Load color asynchronously to avoid SlowOperations on EDT
-                ApplicationManager.getApplication().executeOnPooledThread {
-                    val color = ReadAction.compute<Color?, Nothing> {
-                        try {
-                            val colorManager = FileColorManager.getInstance(project)
-                            if (colorManager.isEnabled && colorManager.isEnabledForProjectView) {
-                                colorManager.getFileColor(virtualFile)
-                            } else {
-                                null
+            synchronized(virtualFileCacheLock) {
+                if (colorCache.containsKey(cacheKey)) {
+                    colorCache[cacheKey] ?: defaultBg
+                } else {
+                    if (!colorLoading.contains(cacheKey)) {
+                        colorLoading.add(cacheKey)
+                        backgroundExecutor.execute {
+                            val color = ReadAction.compute<Color?, Nothing> {
+                                try {
+                                    val colorManager = FileColorManager.getInstance(project)
+                                    if (colorManager.isEnabled && colorManager.isEnabledForProjectView) {
+                                        colorManager.getFileColor(virtualFile)
+                                    } else {
+                                        null
+                                    }
+                                } catch (e: Exception) {
+                                    null
+                                }
                             }
-                        } catch (e: Exception) {
-                            null
+                            synchronized(virtualFileCacheLock) {
+                                colorCache[cacheKey] = color
+                                colorLoading.remove(cacheKey)
+                            }
+                            repaintAlarm.cancelAllRequests()
+                            repaintAlarm.addRequest({ repaint() }, 50)
                         }
                     }
-                    colorCache[cacheKey] = color
-                    ApplicationManager.getApplication().invokeLater {
-                        repaint()
-                    }
+                    defaultBg
                 }
-                defaultBg
             }
         } else {
             defaultBg

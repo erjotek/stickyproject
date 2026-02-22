@@ -5,6 +5,7 @@ import com.intellij.ide.projectView.impl.AbstractProjectViewPane
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
@@ -125,6 +126,7 @@ class StickyScrollManager(private val project: Project) : Disposable {
 
         // Create or reuse sticky component
         if (stickyComponent == null || stickyComponent!!.getTree() !== currentTree) {
+            stickyComponent?.let { Disposer.dispose(it) }
             stickyComponent?.parent?.remove(stickyComponent)
             stickyComponent = StickyHeaderComponent(
                 project,
@@ -388,7 +390,10 @@ class StickyScrollManager(private val project: Project) : Disposable {
             contentManagerListener = null
         }
 
-        stickyComponent?.let { it.parent?.remove(it) }
+        stickyComponent?.let {
+            it.parent?.remove(it)
+            Disposer.dispose(it)
+        }
         stickyComponent = null
 
         autoCollapseManager?.let { com.intellij.openapi.util.Disposer.dispose(it) }
