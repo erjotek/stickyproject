@@ -12,6 +12,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
@@ -19,6 +20,9 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiDirectoryContainer
 import com.intellij.psi.PsiFileSystemItem
+import com.intellij.psi.util.CachedValue
+import com.intellij.psi.util.CachedValueProvider
+import com.intellij.psi.util.CachedValuesManager
 import java.awt.Point
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
@@ -44,6 +48,7 @@ class AutoCollapseManager(
     private var treeSelectionListener: TreeSelectionListener? = null
     private var focusListener: FocusAdapter? = null
     private var toolWindowListener: ToolWindowManagerListener? = null
+    private var allExcludedPathsCache: CachedValue<List<String>>? = null
 
     companion object {
         private const val DEBOUNCE_DELAY_MS = 400
@@ -262,14 +267,20 @@ class AutoCollapseManager(
     }
 
     private fun getExcludedPaths(basePath: String): List<String> {
-        val excludedRoots = ModuleManager.getInstance(project).modules
-            .flatMap { module ->
-                ModuleRootManager.getInstance(module).contentEntries
-                    .flatMap { entry -> entry.excludeFolderFiles.toList() }
+        if (allExcludedPathsCache == null) {
+            allExcludedPathsCache = CachedValuesManager.getManager(project).createCachedValue {
+                val excludedRoots = ModuleManager.getInstance(project).modules
+                    .flatMap { module ->
+                        ModuleRootManager.getInstance(module).contentEntries
+                            .flatMap { entry -> entry.excludeFolderFiles.toList() }
+                    }
+                val result = excludedRoots.map { it.path }
+
+                CachedValueProvider.Result.create(result, ProjectRootManager.getInstance(project))
             }
-        return excludedRoots
-            .mapNotNull { root ->
-                val path = root.path
+        }
+        return allExcludedPathsCache!!.value
+            .mapNotNull { path ->
                 if (!path.startsWith(basePath)) {
                     null
                 } else {
