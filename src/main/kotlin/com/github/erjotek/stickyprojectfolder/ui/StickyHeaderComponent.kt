@@ -57,9 +57,6 @@ class StickyHeaderComponent(
     private val virtualFileCache = WeakHashMap<Any, VirtualFile?>()
     private val virtualFileLoading = Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
 
-    private val virtualFileMethodCacheLock = Any()
-    private val virtualFileMethodCache = WeakHashMap<Class<*>, Method?>()
-
     // Cache for file colors to avoid slow operations on EDT
     private val colorCache = mutableMapOf<String, Color?>()
 
@@ -365,21 +362,6 @@ class StickyHeaderComponent(
         }
 
         return elements.distinct().toTypedArray()
-    }
-
-    private fun resolveVirtualFileGetter(clazz: Class<*>): Method? {
-        synchronized(virtualFileMethodCacheLock) {
-            if (virtualFileMethodCache.containsKey(clazz)) return virtualFileMethodCache[clazz]
-
-            val method = clazz.methods.firstOrNull { m ->
-                (m.name == "getVirtualFile" || m.name == "virtualFile") &&
-                    m.parameterCount == 0 &&
-                    VirtualFile::class.java.isAssignableFrom(m.returnType)
-            }
-
-            virtualFileMethodCache[clazz] = method
-            return method
-        }
     }
 
     private fun updateDragAutoScroll(y: Int) {
@@ -709,37 +691,7 @@ class StickyHeaderComponent(
     }
 
     private fun extractVirtualFileFromNode(node: Any?): VirtualFile? {
-        val candidate = when (node) {
-            is DefaultMutableTreeNode -> node.userObject
-            else -> node
-        }
-
-        if (candidate is ProjectViewNode<*>) {
-            return candidate.virtualFile
-        }
-
-        val value = if (candidate is AbstractTreeNode<*>) candidate.value else candidate
-
-        val direct = when (value) {
-            is PsiDirectory -> value.virtualFile
-            is PsiDirectoryContainer -> value.directories.firstOrNull()?.virtualFile
-            is PsiFileSystemItem -> value.virtualFile
-            is VirtualFile -> value
-            else -> null
-        }
-
-        if (direct != null) return direct
-
-        val fromValue = runCatching {
-            val clazz = value?.javaClass ?: return@runCatching null
-            resolveVirtualFileGetter(clazz)?.invoke(value) as? VirtualFile
-        }.getOrNull()
-        if (fromValue != null) return fromValue
-
-        return runCatching {
-            val clazz = candidate?.javaClass ?: return@runCatching null
-            resolveVirtualFileGetter(clazz)?.invoke(candidate) as? VirtualFile
-        }.getOrNull()
+        return VirtualFileExtractor.extractVirtualFileFromNode(node)
     }
 
     private fun clearSticky() {
