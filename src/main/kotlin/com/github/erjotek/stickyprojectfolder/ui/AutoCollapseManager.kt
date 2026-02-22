@@ -22,7 +22,6 @@ import com.intellij.psi.PsiFileSystemItem
 import java.awt.Point
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
-import java.lang.reflect.Method
 import java.util.WeakHashMap
 import javax.swing.JScrollPane
 import javax.swing.JTree
@@ -47,8 +46,6 @@ class AutoCollapseManager(
 
     companion object {
         private const val DEBOUNCE_DELAY_MS = 400
-        private val virtualFileMethodCacheLock = Any()
-        private val virtualFileMethodCache = WeakHashMap<Class<*>, Method?>()
         private val selectionAnchorCacheLock = Any()
         private val selectionAnchors = WeakHashMap<JTree, SelectionAnchor>()
 
@@ -335,34 +332,10 @@ class AutoCollapseManager(
             }
             if (direct != null) return direct
 
-            resolveVirtualFileByReflection(candidate.value)?.let { return it }
-            resolveVirtualFileByReflection(candidate)?.let { return it }
             return null
         }
 
-        resolveVirtualFileByReflection(candidate)?.let { return it }
         return null
-    }
-
-    private fun resolveVirtualFileByReflection(target: Any?): VirtualFile? {
-        if (target == null) return null
-        val clazz = target.javaClass
-
-        val method = synchronized(virtualFileMethodCacheLock) {
-            if (virtualFileMethodCache.containsKey(clazz)) {
-                virtualFileMethodCache[clazz]
-            } else {
-                val resolved = clazz.methods.firstOrNull { m ->
-                    (m.name == "getVirtualFile" || m.name == "virtualFile") &&
-                        m.parameterCount == 0 &&
-                        VirtualFile::class.java.isAssignableFrom(m.returnType)
-                }
-                virtualFileMethodCache[clazz] = resolved
-                resolved
-            }
-        }
-
-        return runCatching { method?.invoke(target) as? VirtualFile }.getOrNull()
     }
 
     override fun dispose() {
