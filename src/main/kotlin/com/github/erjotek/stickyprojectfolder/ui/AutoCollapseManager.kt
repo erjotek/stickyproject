@@ -293,19 +293,37 @@ class AutoCollapseManager(
         return false
     }
 
-    private fun findExpandedTreePathForDirectory(targetPath: String, rootPath: TreePath): TreePath? {
-        getVirtualFileFromPath(rootPath)?.let { vf ->
-            if (vf.path == targetPath) return rootPath
+    private fun findExpandedTreePathForDirectory(targetPath: String, currentPath: TreePath): TreePath? {
+        val vf = getVirtualFileFromPath(currentPath)
+        if (vf != null) {
+            val path = vf.path
+            if (path == targetPath) return currentPath
+
+            if (!isAncestor(path, targetPath)) {
+                return null
+            }
         }
 
-        val expanded = tree.getExpandedDescendants(rootPath) ?: return null
-        while (expanded.hasMoreElements()) {
-            val path = expanded.nextElement()
-            val vf = getVirtualFileFromPath(path) ?: continue
-            if (vf.path == targetPath) return path
+        if (!tree.isExpanded(currentPath)) return null
+
+        val model = tree.model
+        val node = currentPath.lastPathComponent
+        val count = model.getChildCount(node)
+
+        for (i in 0 until count) {
+            val child = model.getChild(node, i)
+            val childPath = currentPath.pathByAddingChild(child)
+            val result = findExpandedTreePathForDirectory(targetPath, childPath)
+            if (result != null) return result
         }
 
         return null
+    }
+
+    private fun isAncestor(ancestor: String, descendant: String): Boolean {
+        if (descendant == ancestor) return true
+        return descendant.startsWith(ancestor) &&
+            (ancestor.endsWith("/") || descendant.length > ancestor.length && descendant[ancestor.length] == '/')
     }
 
     private fun getVirtualFileFromPath(path: TreePath?): VirtualFile? {
