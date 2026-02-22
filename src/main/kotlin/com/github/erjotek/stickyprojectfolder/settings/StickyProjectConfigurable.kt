@@ -6,6 +6,7 @@ import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.ui.Messages
 import com.intellij.ui.JBColor
 import com.intellij.ui.JBIntSpinner
 import com.intellij.ui.ToolbarDecorator
@@ -166,6 +167,11 @@ class StickyProjectConfigurable(
                 var relativePath = selectedPath.removePrefix(basePath).removePrefix("/")
                 if (relativePath.isNotEmpty() && !relativePath.endsWith("/")) {
                     relativePath += "/"
+                }
+
+                if (relativePath.contains(";")) {
+                    Messages.showErrorDialog(project, "Paths cannot contain semicolons as they are used as separators in settings.", "Invalid Path")
+                    return@chooseFile
                 }
 
                 if (relativePath.isNotEmpty() && !pathsListModel!!.contains(relativePath)) {

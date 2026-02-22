@@ -34,7 +34,8 @@ class AddToAutoCollapseAction : AnAction("Add to Auto-Collapse"), DumbAware {
 
     override fun update(e: AnActionEvent) {
         val relative = getRelativePath(e)
-        if (relative == null) {
+        // Sentinel: Prevent adding paths containing semicolons as they corrupt the settings format
+        if (relative == null || relative.contains(";")) {
             e.presentation.isEnabledAndVisible = false
             return
         }
