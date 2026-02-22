@@ -336,8 +336,7 @@ class StickyProjectConfigurable(
 
             val basePath = project.basePath
             val pathExists = if (basePath != null && value != null) {
-                val fullPath = "$basePath/${value.trimEnd('/')}"
-                File(fullPath).exists()
+                PathValidator.isPathValid(basePath, value)
             } else {
                 false
             }
