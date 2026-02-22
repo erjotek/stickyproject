@@ -9,6 +9,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.intellij.ui.content.ContentManagerEvent
+import com.intellij.ui.content.ContentManagerListener
 import java.awt.*
 import java.awt.event.*
 import javax.swing.*
@@ -22,10 +24,11 @@ class StickyScrollManager(private val project: Project) : Disposable {
     private var scrollPane: JScrollPane? = null
     private var stickyComponent: StickyHeaderComponent? = null
     private var autoCollapseManager: AutoCollapseManager? = null
-    private var retryCount = 0
-    private var checkTimer: Timer? = null
+    private var searchTimer: Timer? = null
 
     // Listeners
+    private var contentManagerListener: ContentManagerListener? = null
+    private var hierarchyListener: HierarchyListener? = null
     private var adjustmentListener: AdjustmentListener? = null
     private var componentListener: ComponentAdapter? = null
     private var viewportChangeListener: ChangeListener? = null
@@ -54,13 +57,21 @@ class StickyScrollManager(private val project: Project) : Disposable {
                 }, project.disposed)
             }
         })
+    }
 
-        checkTimer = Timer(1000) {
-            ApplicationManager.getApplication().invokeLater({
-                if (!project.isDisposed) tryInstall()
-            }, project.disposed)
+    private fun startSearchTimer() {
+        if (searchTimer == null) {
+            searchTimer = Timer(1000) {
+                scheduleTryInstall()
+            }
+            searchTimer?.isRepeats = true
+            searchTimer?.start()
         }
-        checkTimer?.start()
+    }
+
+    private fun stopSearchTimer() {
+        searchTimer?.stop()
+        searchTimer = null
     }
 
     private fun scheduleTryInstall() {
@@ -73,11 +84,26 @@ class StickyScrollManager(private val project: Project) : Disposable {
         val projectView = ProjectView.getInstance(project)
         val pane = projectView.currentProjectViewPane as? AbstractProjectViewPane
 
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)
+        if (toolWindow != null && contentManagerListener == null) {
+            val listener = object : ContentManagerListener {
+                override fun selectionChanged(event: ContentManagerEvent) {
+                    scheduleTryInstall()
+                }
+            }
+            contentManagerListener = listener
+            toolWindow.contentManager.addContentManagerListener(listener)
+        }
+
         val context = resolveTreeContext(pane)
         if (context == null) {
-            if (pane == null && retryCount < 10) {
-                retryCount++
-                scheduleTryInstall()
+            if (this.tree != null) {
+                detach()
+            }
+            if (toolWindow?.isVisible == true) {
+                startSearchTimer()
+            } else {
+                stopSearchTimer()
             }
             return
         }
@@ -95,6 +121,7 @@ class StickyScrollManager(private val project: Project) : Disposable {
 
         this.tree = currentTree
         this.scrollPane = sp
+        stopSearchTimer()
 
         // Create or reuse sticky component
         if (stickyComponent == null || stickyComponent!!.getTree() !== currentTree) {
@@ -234,6 +261,15 @@ class StickyScrollManager(private val project: Project) : Disposable {
             }
             treeSelectionListener = tsListener
             currentTree.addTreeSelectionListener(tsListener)
+
+            val hListener = HierarchyListener { e ->
+                if ((e.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong()) != 0L ||
+                    (e.changeFlags and HierarchyEvent.PARENT_CHANGED.toLong()) != 0L) {
+                    scheduleTryInstall()
+                }
+            }
+            hierarchyListener = hListener
+            currentTree.addHierarchyListener(hListener)
         }
     }
 
@@ -343,6 +379,13 @@ class StickyScrollManager(private val project: Project) : Disposable {
                 treeModelListener?.let { model.removeTreeModelListener(it) }
             }
             treeExpansionListener?.let { t.removeTreeExpansionListener(it) }
+            hierarchyListener?.let { t.removeHierarchyListener(it) }
+        }
+
+        if (contentManagerListener != null) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)
+            toolWindow?.contentManager?.removeContentManagerListener(contentManagerListener!!)
+            contentManagerListener = null
         }
 
         stickyComponent?.let { it.parent?.remove(it) }
@@ -356,10 +399,11 @@ class StickyScrollManager(private val project: Project) : Disposable {
         viewportChangeListener = null
         treeModelListener = null
         treeExpansionListener = null
+        hierarchyListener = null
     }
 
     override fun dispose() {
-        checkTimer?.stop()
+        stopSearchTimer()
         detach()
     }
 }
