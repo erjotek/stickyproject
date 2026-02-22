@@ -550,86 +550,8 @@ class StickyHeaderComponent(
         val settings = com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings.instance
         val maxStickyLimit = settings.state.maxStickyLimit
 
-        val newStickyRows = mutableListOf<StickyRow>()
-        
-        // Probe at the bottom of where sticky stack would be to find what's visible there
-        // This ensures we catch folders as soon as they touch the sticky bottom
-        var currentProbeY = visibleRect.y
-        
-        while (newStickyRows.size < maxStickyLimit) {
-            // Find the row at the current probe position (bottom of sticky stack)
-            val probeRow = tree.getClosestRowForLocation(0, currentProbeY + 1)
-            if (probeRow == -1) break
-            
-            val probePath = tree.getPathForRow(probeRow) ?: break
-            tree.getRowBounds(probeRow) ?: break
-            
-            // Build list of parent containers for this row (from root to current)
-            val candidates = mutableListOf<TreePath>()
-            var ptr: TreePath? = probePath
-            while (ptr != null) {
-                val node = ptr.lastPathComponent
-                if (isContainerNode(node)) {
-                    candidates.add(0, ptr) // Add at beginning to get root-first order
-                }
-                ptr = ptr.parentPath
-            }
-            
-            // Find the next candidate that should become sticky
-            var addedAny = false
-            for (candidatePath in candidates) {
-                if (newStickyRows.size >= maxStickyLimit) break
-                if (newStickyRows.any { it.path == candidatePath }) continue
-                
-                // Verify this is a child of the last sticky (if any)
-                if (newStickyRows.isNotEmpty()) {
-                    val lastSticky = newStickyRows.last().path
-                    if (!lastSticky.isDescendant(candidatePath)) continue
-                }
-                
-                val candidateRow = tree.getRowForPath(candidatePath)
-                if (candidateRow == -1) continue
-                
-                val rowBounds = tree.getRowBounds(candidateRow) ?: continue
-                
-                // Calculate where the sticky stack bottom currently is
-                val currentStickyBottom = visibleRect.y + (newStickyRows.size * rowHeight)
-                
-                // A folder becomes sticky when its top edge touches or passes the sticky bottom
-                if (rowBounds.y <= currentStickyBottom) {
-                    val indent = rowBounds.x
-                    newStickyRows.add(StickyRow(candidatePath, indent))
-                    currentProbeY = visibleRect.y + (newStickyRows.size * rowHeight)
-                    addedAny = true
-                    break // Re-probe at new position
-                }
-            }
-            
-            if (!addedAny) break
-        }
-
-        // Push Logic
-        var calculatedPushOffset = 0
-
-        if (newStickyRows.isNotEmpty()) {
-            val lastSticky = newStickyRows.last().path
-            val nextSibling = findNextSiblingOrCousin(lastSticky)
-
-            if (nextSibling != null) {
-                val nextRow = tree.getRowForPath(nextSibling)
-                if (nextRow != -1) {
-                    val bounds = tree.getRowBounds(nextRow)
-                    if (bounds != null) {
-                        val stackHeight = newStickyRows.size * rowHeight
-                        val visualStackBottomY = visibleRect.y + stackHeight
-
-                        if (bounds.y < visualStackBottomY) {
-                            calculatedPushOffset = (visualStackBottomY - bounds.y).coerceIn(0, rowHeight)
-                        }
-                    }
-                }
-            }
-        }
+        val newStickyRows = calculateStickyRows(visibleRect, rowHeight, maxStickyLimit)
+        val calculatedPushOffset = calculatePushOffset(visibleRect, rowHeight, newStickyRows)
 
         // Commit changes
         var stateChanged = false
@@ -653,6 +575,92 @@ class StickyHeaderComponent(
         if (stateChanged || forceRepaint) {
             repaint()
         }
+    }
+
+    private fun calculateStickyRows(visibleRect: Rectangle, rowHeight: Int, maxStickyLimit: Int): List<StickyRow> {
+        val newStickyRows = mutableListOf<StickyRow>()
+
+        // Probe at the bottom of where sticky stack would be to find what's visible there
+        // This ensures we catch folders as soon as they touch the sticky bottom
+        var currentProbeY = visibleRect.y
+
+        while (newStickyRows.size < maxStickyLimit) {
+            // Find the row at the current probe position (bottom of sticky stack)
+            val probeRow = tree.getClosestRowForLocation(0, currentProbeY + 1)
+            if (probeRow == -1) break
+
+            val probePath = tree.getPathForRow(probeRow) ?: break
+            tree.getRowBounds(probeRow) ?: break
+
+            // Build list of parent containers for this row (from root to current)
+            val candidates = mutableListOf<TreePath>()
+            var ptr: TreePath? = probePath
+            while (ptr != null) {
+                val node = ptr.lastPathComponent
+                if (isContainerNode(node)) {
+                    candidates.add(0, ptr) // Add at beginning to get root-first order
+                }
+                ptr = ptr.parentPath
+            }
+
+            // Find the next candidate that should become sticky
+            var addedAny = false
+            for (candidatePath in candidates) {
+                if (newStickyRows.size >= maxStickyLimit) break
+                if (newStickyRows.any { it.path == candidatePath }) continue
+
+                // Verify this is a child of the last sticky (if any)
+                if (newStickyRows.isNotEmpty()) {
+                    val lastSticky = newStickyRows.last().path
+                    if (!lastSticky.isDescendant(candidatePath)) continue
+                }
+
+                val candidateRow = tree.getRowForPath(candidatePath)
+                if (candidateRow == -1) continue
+
+                val rowBounds = tree.getRowBounds(candidateRow) ?: continue
+
+                // Calculate where the sticky stack bottom currently is
+                val currentStickyBottom = visibleRect.y + (newStickyRows.size * rowHeight)
+
+                // A folder becomes sticky when its top edge touches or passes the sticky bottom
+                if (rowBounds.y <= currentStickyBottom) {
+                    val indent = rowBounds.x
+                    newStickyRows.add(StickyRow(candidatePath, indent))
+                    currentProbeY = visibleRect.y + (newStickyRows.size * rowHeight)
+                    addedAny = true
+                    break // Re-probe at new position
+                }
+            }
+
+            if (!addedAny) break
+        }
+        return newStickyRows
+    }
+
+    private fun calculatePushOffset(visibleRect: Rectangle, rowHeight: Int, newStickyRows: List<StickyRow>): Int {
+        var calculatedPushOffset = 0
+
+        if (newStickyRows.isNotEmpty()) {
+            val lastSticky = newStickyRows.last().path
+            val nextSibling = findNextSiblingOrCousin(lastSticky)
+
+            if (nextSibling != null) {
+                val nextRow = tree.getRowForPath(nextSibling)
+                if (nextRow != -1) {
+                    val bounds = tree.getRowBounds(nextRow)
+                    if (bounds != null) {
+                        val stackHeight = newStickyRows.size * rowHeight
+                        val visualStackBottomY = visibleRect.y + stackHeight
+
+                        if (bounds.y < visualStackBottomY) {
+                            calculatedPushOffset = (visualStackBottomY - bounds.y).coerceIn(0, rowHeight)
+                        }
+                    }
+                }
+            }
+        }
+        return calculatedPushOffset
     }
 
     fun isAffectedBy(e: TreeModelEvent): Boolean {
