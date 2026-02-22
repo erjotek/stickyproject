@@ -1,5 +1,6 @@
 package com.github.erjotek.stickyprojectfolder.ui
 
+import com.github.erjotek.stickyprojectfolder.MyBundle
 import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.util.treeView.AbstractTreeNode
 import com.intellij.openapi.application.ApplicationManager
@@ -277,11 +278,11 @@ class StickyHeaderComponent(
                     else -> {
                         when (Messages.showYesNoCancelDialog(
                             project,
-                            "Co chcesz zrobić z przeciąganymi elementami?",
-                            "Przenieś lub kopiuj",
-                            "Przenieś",
-                            "Kopiuj",
-                            "Anuluj",
+                            MyBundle.message("drop.dialog.message"),
+                            MyBundle.message("drop.dialog.title"),
+                            MyBundle.message("drop.dialog.move"),
+                            MyBundle.message("drop.dialog.copy"),
+                            MyBundle.message("drop.dialog.cancel"),
                             null
                         )) {
                             Messages.YES -> DnDConstants.ACTION_MOVE
