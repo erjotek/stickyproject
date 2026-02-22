@@ -1,7 +1,9 @@
 package com.github.erjotek.stickyprojectfolder.ui
 
+import com.github.erjotek.stickyprojectfolder.MyBundle
 import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.util.treeView.AbstractTreeNode
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
@@ -16,6 +18,8 @@ import com.intellij.refactoring.copy.CopyHandler
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.FileColorManager
 import com.intellij.ui.JBColor
+import com.intellij.util.Alarm
+import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.*
@@ -39,7 +43,7 @@ class StickyHeaderComponent(
     private val scrollPane: JScrollPane,
     private val onBoundsUpdateNeeded: () -> Unit = {},
     private val onStickyHeaderClick: () -> Unit = {}
-) : JComponent() {
+) : JComponent(), Disposable {
 
     fun getTree(): JTree = tree
 
@@ -56,6 +60,10 @@ class StickyHeaderComponent(
     private val virtualFileCacheLock = Any()
     private val virtualFileCache = WeakHashMap<Any, VirtualFile?>()
     private val virtualFileLoading = Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
+    private val colorLoading = mutableSetOf<String>()
+
+    private val backgroundExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor("StickyHeaderExecutor", 2)
+    private val repaintAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
 
     // Cache for file colors to avoid slow operations on EDT
     private val colorCache = mutableMapOf<String, Color?>()
@@ -215,8 +223,9 @@ class StickyHeaderComponent(
         if (value is PsiDirectory) return value
 
         val vf = extractVirtualFileFromNode(node)
-        if (vf != null && vf.isDirectory) {
-            return com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
+        if (vf != null) {
+            val element = resolvePsiElement(vf)
+            if (element is PsiDirectory) return element
         }
 
         return null
@@ -274,11 +283,11 @@ class StickyHeaderComponent(
                     else -> {
                         when (Messages.showYesNoCancelDialog(
                             project,
-                            "Co chcesz zrobić z przeciąganymi elementami?",
-                            "Przenieś lub kopiuj",
-                            "Przenieś",
-                            "Kopiuj",
-                            "Anuluj",
+                            MyBundle.message("drop.dialog.message"),
+                            MyBundle.message("drop.dialog.title"),
+                            MyBundle.message("drop.dialog.move"),
+                            MyBundle.message("drop.dialog.copy"),
+                            MyBundle.message("drop.dialog.cancel"),
                             null
                         )) {
                             Messages.YES -> DnDConstants.ACTION_MOVE
@@ -318,11 +327,7 @@ class StickyHeaderComponent(
                 val files = data.filterIsInstance<java.io.File>()
                 for (file in files) {
                     val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByIoFile(file) ?: continue
-                    val psi = if (vf.isDirectory) {
-                        com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
-                    } else {
-                        com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
-                    }
+                    val psi = resolvePsiElement(vf)
                     if (psi != null) elements.add(psi)
                 }
             }
@@ -336,11 +341,7 @@ class StickyHeaderComponent(
             when (data) {
                 is Array<*> -> {
                     data.filterIsInstance<VirtualFile>().forEach { vf ->
-                        val psi = if (vf.isDirectory) {
-                            com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
-                        } else {
-                            com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
-                        }
+                        val psi = resolvePsiElement(vf)
                         if (psi != null) elements.add(psi)
                     }
 
@@ -348,11 +349,7 @@ class StickyHeaderComponent(
                 }
                 is Collection<*> -> {
                     data.filterIsInstance<VirtualFile>().forEach { vf ->
-                        val psi = if (vf.isDirectory) {
-                            com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
-                        } else {
-                            com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
-                        }
+                        val psi = resolvePsiElement(vf)
                         if (psi != null) elements.add(psi)
                     }
 
@@ -362,6 +359,29 @@ class StickyHeaderComponent(
         }
 
         return elements.distinct().toTypedArray()
+    }
+
+    private fun resolvePsiElement(vf: VirtualFile): PsiElement? {
+        return if (vf.isDirectory) {
+            com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
+        } else {
+            com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
+        }
+    }
+
+    private fun resolveVirtualFileGetter(clazz: Class<*>): Method? {
+        synchronized(virtualFileMethodCacheLock) {
+            if (virtualFileMethodCache.containsKey(clazz)) return virtualFileMethodCache[clazz]
+
+            val method = clazz.methods.firstOrNull { m ->
+                (m.name == "getVirtualFile" || m.name == "virtualFile") &&
+                    m.parameterCount == 0 &&
+                    VirtualFile::class.java.isAssignableFrom(m.returnType)
+            }
+
+            virtualFileMethodCache[clazz] = method
+            return method
+        }
     }
 
     private fun updateDragAutoScroll(y: Int) {
@@ -428,7 +448,7 @@ class StickyHeaderComponent(
 
             if (!virtualFileLoading.contains(node)) {
                 virtualFileLoading.add(node)
-                ApplicationManager.getApplication().executeOnPooledThread {
+                backgroundExecutor.execute {
                     val vf = ReadAction.compute<VirtualFile?, Nothing> {
                         extractVirtualFileFromNode(node)
                     }
@@ -438,9 +458,8 @@ class StickyHeaderComponent(
                         virtualFileLoading.remove(node)
                     }
 
-                    ApplicationManager.getApplication().invokeLater {
-                        repaint()
-                    }
+                    repaintAlarm.cancelAllRequests()
+                    repaintAlarm.addRequest({ repaint() }, 50)
                 }
             }
 
@@ -462,13 +481,7 @@ class StickyHeaderComponent(
         val psiElements = files.mapNotNull { file ->
             ReadAction.compute<com.intellij.psi.PsiElement?, Nothing> {
                 val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByIoFile(file)
-                if (vf != null) {
-                    if (vf.isDirectory) {
-                        com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
-                    } else {
-                        com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
-                    }
-                } else null
+                if (vf != null) resolvePsiElement(vf) else null
             }
         }.toTypedArray()
 
@@ -637,6 +650,11 @@ class StickyHeaderComponent(
         }
     }
 
+    override fun dispose() {
+        repaintAlarm.cancelAllRequests()
+        backgroundExecutor.shutdownNow()
+    }
+
     fun isAffectedBy(e: TreeModelEvent): Boolean {
         if (stickyRows.isEmpty()) return false
 
@@ -746,29 +764,35 @@ class StickyHeaderComponent(
         
         val bgColor = if (virtualFile != null) {
             val cacheKey = virtualFile.path
-            if (colorCache.containsKey(cacheKey)) {
-                colorCache[cacheKey] ?: defaultBg
-            } else {
-                // Load color asynchronously to avoid SlowOperations on EDT
-                ApplicationManager.getApplication().executeOnPooledThread {
-                    val color = ReadAction.compute<Color?, Nothing> {
-                        try {
-                            val colorManager = FileColorManager.getInstance(project)
-                            if (colorManager.isEnabled && colorManager.isEnabledForProjectView) {
-                                colorManager.getFileColor(virtualFile)
-                            } else {
-                                null
+            synchronized(virtualFileCacheLock) {
+                if (colorCache.containsKey(cacheKey)) {
+                    colorCache[cacheKey] ?: defaultBg
+                } else {
+                    if (!colorLoading.contains(cacheKey)) {
+                        colorLoading.add(cacheKey)
+                        backgroundExecutor.execute {
+                            val color = ReadAction.compute<Color?, Nothing> {
+                                try {
+                                    val colorManager = FileColorManager.getInstance(project)
+                                    if (colorManager.isEnabled && colorManager.isEnabledForProjectView) {
+                                        colorManager.getFileColor(virtualFile)
+                                    } else {
+                                        null
+                                    }
+                                } catch (e: Exception) {
+                                    null
+                                }
                             }
-                        } catch (e: Exception) {
-                            null
+                            synchronized(virtualFileCacheLock) {
+                                colorCache[cacheKey] = color
+                                colorLoading.remove(cacheKey)
+                            }
+                            repaintAlarm.cancelAllRequests()
+                            repaintAlarm.addRequest({ repaint() }, 50)
                         }
                     }
-                    colorCache[cacheKey] = color
-                    ApplicationManager.getApplication().invokeLater {
-                        repaint()
-                    }
+                    defaultBg
                 }
-                defaultBg
             }
         } else {
             defaultBg

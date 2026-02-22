@@ -12,6 +12,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootManager
+import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
@@ -19,10 +20,12 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiDirectoryContainer
 import com.intellij.psi.PsiFileSystemItem
+import com.intellij.psi.util.CachedValue
+import com.intellij.psi.util.CachedValueProvider
+import com.intellij.psi.util.CachedValuesManager
 import java.awt.Point
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
-import java.lang.reflect.Method
 import java.util.WeakHashMap
 import javax.swing.JScrollPane
 import javax.swing.JTree
@@ -44,11 +47,10 @@ class AutoCollapseManager(
     private var treeSelectionListener: TreeSelectionListener? = null
     private var focusListener: FocusAdapter? = null
     private var toolWindowListener: ToolWindowManagerListener? = null
+    private var allExcludedPathsCache: CachedValue<List<String>>? = null
 
     companion object {
         private const val DEBOUNCE_DELAY_MS = 400
-        private val virtualFileMethodCacheLock = Any()
-        private val virtualFileMethodCache = WeakHashMap<Class<*>, Method?>()
         private val selectionAnchorCacheLock = Any()
         private val selectionAnchors = WeakHashMap<JTree, SelectionAnchor>()
 
@@ -262,14 +264,20 @@ class AutoCollapseManager(
     }
 
     private fun getExcludedPaths(basePath: String): List<String> {
-        val excludedRoots = ModuleManager.getInstance(project).modules
-            .flatMap { module ->
-                ModuleRootManager.getInstance(module).contentEntries
-                    .flatMap { entry -> entry.excludeFolderFiles.toList() }
+        if (allExcludedPathsCache == null) {
+            allExcludedPathsCache = CachedValuesManager.getManager(project).createCachedValue {
+                val excludedRoots = ModuleManager.getInstance(project).modules
+                    .flatMap { module ->
+                        ModuleRootManager.getInstance(module).contentEntries
+                            .flatMap { entry -> entry.excludeFolderFiles.toList() }
+                    }
+                val result = excludedRoots.map { it.path }
+
+                CachedValueProvider.Result.create(result, ProjectRootManager.getInstance(project))
             }
-        return excludedRoots
-            .mapNotNull { root ->
-                val path = root.path
+        }
+        return allExcludedPathsCache!!.value
+            .mapNotNull { path ->
                 if (!path.startsWith(basePath)) {
                     null
                 } else {
@@ -293,19 +301,37 @@ class AutoCollapseManager(
         return false
     }
 
-    private fun findExpandedTreePathForDirectory(targetPath: String, rootPath: TreePath): TreePath? {
-        getVirtualFileFromPath(rootPath)?.let { vf ->
-            if (vf.path == targetPath) return rootPath
+    private fun findExpandedTreePathForDirectory(targetPath: String, currentPath: TreePath): TreePath? {
+        val vf = getVirtualFileFromPath(currentPath)
+        if (vf != null) {
+            val path = vf.path
+            if (path == targetPath) return currentPath
+
+            if (!isAncestor(path, targetPath)) {
+                return null
+            }
         }
 
-        val expanded = tree.getExpandedDescendants(rootPath) ?: return null
-        while (expanded.hasMoreElements()) {
-            val path = expanded.nextElement()
-            val vf = getVirtualFileFromPath(path) ?: continue
-            if (vf.path == targetPath) return path
+        if (!tree.isExpanded(currentPath)) return null
+
+        val model = tree.model
+        val node = currentPath.lastPathComponent
+        val count = model.getChildCount(node)
+
+        for (i in 0 until count) {
+            val child = model.getChild(node, i)
+            val childPath = currentPath.pathByAddingChild(child)
+            val result = findExpandedTreePathForDirectory(targetPath, childPath)
+            if (result != null) return result
         }
 
         return null
+    }
+
+    private fun isAncestor(ancestor: String, descendant: String): Boolean {
+        if (descendant == ancestor) return true
+        return descendant.startsWith(ancestor) &&
+            (ancestor.endsWith("/") || descendant.length > ancestor.length && descendant[ancestor.length] == '/')
     }
 
     private fun getVirtualFileFromPath(path: TreePath?): VirtualFile? {
@@ -335,34 +361,10 @@ class AutoCollapseManager(
             }
             if (direct != null) return direct
 
-            resolveVirtualFileByReflection(candidate.value)?.let { return it }
-            resolveVirtualFileByReflection(candidate)?.let { return it }
             return null
         }
 
-        resolveVirtualFileByReflection(candidate)?.let { return it }
         return null
-    }
-
-    private fun resolveVirtualFileByReflection(target: Any?): VirtualFile? {
-        if (target == null) return null
-        val clazz = target.javaClass
-
-        val method = synchronized(virtualFileMethodCacheLock) {
-            if (virtualFileMethodCache.containsKey(clazz)) {
-                virtualFileMethodCache[clazz]
-            } else {
-                val resolved = clazz.methods.firstOrNull { m ->
-                    (m.name == "getVirtualFile" || m.name == "virtualFile") &&
-                        m.parameterCount == 0 &&
-                        VirtualFile::class.java.isAssignableFrom(m.returnType)
-                }
-                virtualFileMethodCache[clazz] = resolved
-                resolved
-            }
-        }
-
-        return runCatching { method?.invoke(target) as? VirtualFile }.getOrNull()
     }
 
     override fun dispose() {
