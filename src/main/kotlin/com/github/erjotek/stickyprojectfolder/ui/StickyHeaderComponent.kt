@@ -322,7 +322,16 @@ class StickyHeaderComponent(
         val elements = mutableListOf<PsiElement>()
 
         if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-            val data = runCatching { transferable.getTransferData(DataFlavor.javaFileListFlavor) }.getOrNull()
+            var data: Any? = null
+            try {
+                data = transferable.getTransferData(DataFlavor.javaFileListFlavor)
+            } catch (e: Exception) {
+                if (e is java.awt.datatransfer.UnsupportedFlavorException || e is java.io.IOException) {
+                    // ignore
+                } else {
+                    LOG.error("Failed to get transfer data for javaFileListFlavor", e)
+                }
+            }
             if (data is java.util.List<*>) {
                 val files = data.filterIsInstance<java.io.File>()
                 for (file in files) {
@@ -336,7 +345,19 @@ class StickyHeaderComponent(
         if (elements.isNotEmpty()) return elements.toTypedArray()
 
         for (flavor in transferable.transferDataFlavors) {
-            val data = runCatching { transferable.getTransferData(flavor) }.getOrNull() ?: continue
+            var data: Any? = null
+            try {
+                data = transferable.getTransferData(flavor)
+            } catch (e: Exception) {
+                if (e is java.awt.datatransfer.UnsupportedFlavorException || e is java.io.IOException) {
+                    continue
+                } else {
+                    LOG.error("Failed to get transfer data for flavor ${flavor.mimeType}", e)
+                    continue
+                }
+            }
+
+            if (data == null) continue
 
             when (data) {
                 is Array<*> -> {
@@ -366,21 +387,6 @@ class StickyHeaderComponent(
             com.intellij.psi.PsiManager.getInstance(project).findDirectory(vf)
         } else {
             com.intellij.psi.PsiManager.getInstance(project).findFile(vf)
-        }
-    }
-
-    private fun resolveVirtualFileGetter(clazz: Class<*>): Method? {
-        synchronized(virtualFileMethodCacheLock) {
-            if (virtualFileMethodCache.containsKey(clazz)) return virtualFileMethodCache[clazz]
-
-            val method = clazz.methods.firstOrNull { m ->
-                (m.name == "getVirtualFile" || m.name == "virtualFile") &&
-                    m.parameterCount == 0 &&
-                    VirtualFile::class.java.isAssignableFrom(m.returnType)
-            }
-
-            virtualFileMethodCache[clazz] = method
-            return method
         }
     }
 
