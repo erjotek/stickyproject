@@ -251,7 +251,7 @@ class StickyHeaderComponent(
             return
         }
 
-        LOG.info("Target directory: ${targetDir.virtualFile.path}")
+        LOG.info("Target directory found")
 
         val transferable = e.transferable
         LOG.info("Available flavors: ${transferable.transferDataFlavors.map { it.mimeType }}")
@@ -369,20 +369,6 @@ class StickyHeaderComponent(
         }
     }
 
-    private fun resolveVirtualFileGetter(clazz: Class<*>): Method? {
-        synchronized(virtualFileMethodCacheLock) {
-            if (virtualFileMethodCache.containsKey(clazz)) return virtualFileMethodCache[clazz]
-
-            val method = clazz.methods.firstOrNull { m ->
-                (m.name == "getVirtualFile" || m.name == "virtualFile") &&
-                    m.parameterCount == 0 &&
-                    VirtualFile::class.java.isAssignableFrom(m.returnType)
-            }
-
-            virtualFileMethodCache[clazz] = method
-            return method
-        }
-    }
 
     private fun updateDragAutoScroll(y: Int) {
         if (!isShowing) {
@@ -476,7 +462,7 @@ class StickyHeaderComponent(
     }
 
     private fun moveFilesToDirectory(files: List<java.io.File>, targetDir: PsiDirectory) {
-        LOG.info("moveFilesToDirectory called: ${files.size} files to ${targetDir.virtualFile.path}")
+        LOG.info("moveFilesToDirectory called: ${files.size} files")
 
         val psiElements = files.mapNotNull { file ->
             ReadAction.compute<com.intellij.psi.PsiElement?, Nothing> {
