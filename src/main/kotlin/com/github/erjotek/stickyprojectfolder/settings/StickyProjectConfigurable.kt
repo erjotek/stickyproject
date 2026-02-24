@@ -171,11 +171,6 @@ class StickyProjectConfigurable(
                     relativePath += "/"
                 }
 
-                if (relativePath.contains(";")) {
-                    Messages.showErrorDialog(project, "Paths cannot contain semicolons as they are used as separators in settings.", "Invalid Path")
-                    return@chooseFile
-                }
-
                 if (relativePath.isNotEmpty() && !pathsListModel!!.contains(relativePath)) {
                     pathsListModel!!.addElement(relativePath)
                     sortPathsListModel()
@@ -191,18 +186,17 @@ class StickyProjectConfigurable(
         }
     }
 
-    private fun getPathsFromModel(): String {
+    private fun getPathsFromModel(): List<String> {
         val paths = mutableListOf<String>()
         for (i in 0 until (pathsListModel?.size ?: 0)) {
             pathsListModel?.get(i)?.let { paths.add(it) }
         }
-        return paths.joinToString(";")
+        return paths
     }
 
-    private fun setPathsToModel(pathsString: String) {
+    private fun setPathsToModel(paths: List<String>) {
         pathsListModel?.clear()
-        pathsString.split(";")
-            .map { it.trim() }
+        paths.map { it.trim() }
             .filter { it.isNotEmpty() }
             .forEach { pathsListModel?.addElement(it) }
         sortPathsListModel()
@@ -266,7 +260,7 @@ class StickyProjectConfigurable(
         return maxStickyLimitSpinner?.number != settings.state.maxStickyLimit ||
             autoCollapseEnabledCheckbox?.isSelected != settings.state.autoCollapseEnabled ||
             autoCollapseIncludeExcludedCheckbox?.isSelected != projectSettings.state.autoCollapseIncludeExcluded ||
-            getPathsFromModel() != settings.state.autoCollapsePaths
+            getPathsFromModel() != settings.state.autoCollapsePathsList
     }
 
     override fun apply() {
@@ -275,7 +269,7 @@ class StickyProjectConfigurable(
         settings.state.maxStickyLimit = maxStickyLimitSpinner?.number ?: 10
         settings.state.autoCollapseEnabled = autoCollapseEnabledCheckbox?.isSelected ?: true
         projectSettings.state.autoCollapseIncludeExcluded = autoCollapseIncludeExcludedCheckbox?.isSelected ?: false
-        settings.state.autoCollapsePaths = getPathsFromModel()
+        settings.state.autoCollapsePathsList = getPathsFromModel().toMutableList()
     }
 
     override fun reset() {
@@ -284,7 +278,7 @@ class StickyProjectConfigurable(
         maxStickyLimitSpinner?.number = settings.state.maxStickyLimit
         autoCollapseEnabledCheckbox?.isSelected = settings.state.autoCollapseEnabled
         autoCollapseIncludeExcludedCheckbox?.isSelected = projectSettings.state.autoCollapseIncludeExcluded
-        setPathsToModel(settings.state.autoCollapsePaths)
+        setPathsToModel(settings.state.autoCollapsePathsList)
         updateExcludedPathsModel()
         updateExcludedPanelState()
     }

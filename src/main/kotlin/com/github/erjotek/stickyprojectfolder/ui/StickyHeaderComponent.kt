@@ -369,21 +369,6 @@ class StickyHeaderComponent(
         }
     }
 
-    private fun resolveVirtualFileGetter(clazz: Class<*>): Method? {
-        synchronized(virtualFileMethodCacheLock) {
-            if (virtualFileMethodCache.containsKey(clazz)) return virtualFileMethodCache[clazz]
-
-            val method = clazz.methods.firstOrNull { m ->
-                (m.name == "getVirtualFile" || m.name == "virtualFile") &&
-                    m.parameterCount == 0 &&
-                    VirtualFile::class.java.isAssignableFrom(m.returnType)
-            }
-
-            virtualFileMethodCache[clazz] = method
-            return method
-        }
-    }
-
     private fun updateDragAutoScroll(y: Int) {
         if (!isShowing) {
             stopDragAutoScroll()
