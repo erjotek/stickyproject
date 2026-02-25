@@ -13,7 +13,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class SecurityTest : BasePlatformTestCase() {
 
-    fun testActionDisabledForPathWithSemicolon() {
+    fun testActionEnabledForPathWithSemicolon() {
         val dirName = "foo;bar"
         // Ensure we use the project base directory
         val baseDir = myFixture.project.basePath?.let {
@@ -32,8 +32,8 @@ class SecurityTest : BasePlatformTestCase() {
 
         action.update(event)
 
-        // After fix: it should be disabled
-        assertFalse("Action should be DISABLED for path with semicolon", event.presentation.isEnabledAndVisible)
+        // After fix: it should be ENABLED because we handle it safely now
+        assertTrue("Action should be ENABLED for path with semicolon", event.presentation.isEnabledAndVisible)
     }
 
     private fun createEvent(action: AnAction, file: VirtualFile): AnActionEvent {

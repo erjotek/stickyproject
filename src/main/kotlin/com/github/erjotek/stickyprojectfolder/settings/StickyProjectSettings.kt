@@ -15,7 +15,9 @@ class StickyProjectSettings : PersistentStateComponent<StickyProjectSettings.Sta
     data class State(
         var maxStickyLimit: Int = 10,
         var autoCollapseEnabled: Boolean = true,
-        var autoCollapsePaths: String = "app/node_modules/;app/vendor/;node_modules/;vendor/;build/;dist/"
+        var autoCollapsePaths: String? = null,
+        @com.intellij.util.xmlb.annotations.OptionTag("autoCollapsePathsList")
+        var autoCollapsePathsList: MutableList<String> = mutableListOf("app/node_modules/", "app/vendor/", "node_modules/", "vendor/", "build/", "dist/")
     )
 
     private var myState = State()
@@ -24,6 +26,12 @@ class StickyProjectSettings : PersistentStateComponent<StickyProjectSettings.Sta
 
     override fun loadState(state: State) {
         myState = state
+        if (myState.autoCollapsePaths != null) {
+            val legacyPaths = myState.autoCollapsePaths!!.split(";").map { it.trim() }.filter { it.isNotEmpty() }
+            myState.autoCollapsePathsList.clear()
+            myState.autoCollapsePathsList.addAll(legacyPaths)
+            myState.autoCollapsePaths = null
+        }
     }
 
     companion object {
