@@ -17,7 +17,8 @@ class StickyProjectSettings : PersistentStateComponent<StickyProjectSettings.Sta
         var autoCollapseEnabled: Boolean = true,
         var autoCollapsePaths: String? = null,
         @com.intellij.util.xmlb.annotations.OptionTag("autoCollapsePathsList")
-        var autoCollapsePathsList: MutableList<String> = mutableListOf("app/node_modules/", "app/vendor/", "node_modules/", "vendor/", "build/", "dist/")
+        var autoCollapsePathsList: MutableList<String> = mutableListOf("app/node_modules/", "app/vendor/", "node_modules/", "vendor/", "build/", "dist/"),
+        var avoidTransparentScrollbarOverlap: Boolean = false
     )
 
     private var myState = State()
