@@ -20,12 +20,12 @@ private fun getRelativePath(event: AnActionEvent): String? {
 }
 
 private fun getCurrentPaths(): List<String> {
-    val raw = StickyProjectSettings.instance.state.autoCollapsePaths
-    return raw.split(";").map { it.trim() }.filter { it.isNotEmpty() }
+    return StickyProjectSettings.instance.state.autoCollapsePathsList.toList()
 }
 
 private fun savePaths(paths: List<String>) {
-    StickyProjectSettings.instance.state.autoCollapsePaths = paths.joinToString(";")
+    StickyProjectSettings.instance.state.autoCollapsePathsList.clear()
+    StickyProjectSettings.instance.state.autoCollapsePathsList.addAll(paths)
 }
 
 class AddToAutoCollapseAction : AnAction("Add to Auto-Collapse"), DumbAware {
@@ -34,8 +34,7 @@ class AddToAutoCollapseAction : AnAction("Add to Auto-Collapse"), DumbAware {
 
     override fun update(e: AnActionEvent) {
         val relative = getRelativePath(e)
-        // Sentinel: Prevent adding paths containing semicolons as they corrupt the settings format
-        if (relative == null || relative.contains(";")) {
+        if (relative == null) {
             e.presentation.isEnabledAndVisible = false
             return
         }

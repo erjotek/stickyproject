@@ -1,6 +1,7 @@
 package com.github.erjotek.stickyprojectfolder.ui
 
 import com.github.erjotek.stickyprojectfolder.MyBundle
+import com.github.erjotek.stickyprojectfolder.util.VirtualFileExtractor
 import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.util.treeView.AbstractTreeNode
 import com.intellij.openapi.Disposable
@@ -369,20 +370,6 @@ class StickyHeaderComponent(
         }
     }
 
-    private fun resolveVirtualFileGetter(clazz: Class<*>): Method? {
-        synchronized(virtualFileMethodCacheLock) {
-            if (virtualFileMethodCache.containsKey(clazz)) return virtualFileMethodCache[clazz]
-
-            val method = clazz.methods.firstOrNull { m ->
-                (m.name == "getVirtualFile" || m.name == "virtualFile") &&
-                    m.parameterCount == 0 &&
-                    VirtualFile::class.java.isAssignableFrom(m.returnType)
-            }
-
-            virtualFileMethodCache[clazz] = method
-            return method
-        }
-    }
 
     private fun updateDragAutoScroll(y: Int) {
         if (!isShowing) {

@@ -204,13 +204,8 @@ class AutoCollapseManager(
         if (!settings.state.autoCollapseEnabled) return
 
         val basePath = project.basePath ?: return
-        val pathsConfig = settings.state.autoCollapsePaths
         val pathsToCollapse = mutableListOf<String>()
-        if (pathsConfig.isNotBlank()) {
-            pathsToCollapse += pathsConfig.split(";")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-        }
+        pathsToCollapse.addAll(settings.state.autoCollapsePathsList.filter { it.isNotBlank() })
         if (StickyProjectProjectSettings.getInstance(project).state.autoCollapseIncludeExcluded) {
             pathsToCollapse += getExcludedPaths(basePath)
         }

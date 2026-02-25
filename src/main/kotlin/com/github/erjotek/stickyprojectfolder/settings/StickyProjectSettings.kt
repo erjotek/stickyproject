@@ -3,7 +3,6 @@ package com.github.erjotek.stickyprojectfolder.settings
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
-import com.intellij.openapi.components.service
 import com.intellij.openapi.application.ApplicationManager
 
 @State(
@@ -15,7 +14,9 @@ class StickyProjectSettings : PersistentStateComponent<StickyProjectSettings.Sta
     data class State(
         var maxStickyLimit: Int = 10,
         var autoCollapseEnabled: Boolean = true,
-        var autoCollapsePaths: String = "app/node_modules/;app/vendor/;node_modules/;vendor/;build/;dist/"
+        var autoCollapsePathsList: MutableList<String> = mutableListOf("app/node_modules/", "app/vendor/", "node_modules/", "vendor/", "build/", "dist/"),
+        @Deprecated("Use autoCollapsePathsList instead")
+        var autoCollapsePaths: String? = null
     )
 
     private var myState = State()
@@ -24,6 +25,22 @@ class StickyProjectSettings : PersistentStateComponent<StickyProjectSettings.Sta
 
     override fun loadState(state: State) {
         myState = state
+        // Migration from old String format to List format
+        if (myState.autoCollapsePaths != null) {
+            val oldPaths = myState.autoCollapsePaths!!
+            // Always clear the default list if we have a legacy setting (even if empty)
+            myState.autoCollapsePathsList.clear()
+
+            if (oldPaths.isNotBlank()) {
+                myState.autoCollapsePathsList.addAll(
+                    oldPaths.split(";")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                )
+            }
+            // Clear the old field so migration doesn't run again and it gets removed from XML eventually
+            myState.autoCollapsePaths = null
+        }
     }
 
     companion object {
