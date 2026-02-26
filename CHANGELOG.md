@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [0.9.17] - 2026-02-25
+### Added
+- Added a new setting "Adjust sticky width for transparent scrollbar" (disabled by default) to prevent the scrollbar from partially covering sticky directories when "Always show scrollbar" is off in the OS.
+- Sticky directories will now reliably disappear when scrolling to the absolute top of the tree, allowing access to the root folder's expand/collapse icon and context menu.
+
+### Fixed
+- Performance: optimized auto-collapse path handling (including cached excluded paths and faster tree-path search) to reduce work on large project trees.
+- Path validation: hardened relative-path checks in settings and auto-collapse to block traversal outside the project root.
+- Remove deprecated APIs and update the plugin to apply the latest Intellij Platform recommendations
+
 ## [0.9.12] - 2026-02-20
 ### Added
 - Right-clicking a directory in the Project View now shows **"Add to Auto-Collapse"** or **"Remove from Auto-Collapse"** in the context menu, allowing quick management of the auto-collapse list without opening Settings.
