@@ -27,7 +27,6 @@ import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
 import java.awt.dnd.*
 import java.awt.event.*
-import java.lang.reflect.Method
 import java.util.Collections
 import java.util.WeakHashMap
 import javax.swing.*
@@ -251,7 +250,7 @@ class StickyHeaderComponent(
             return
         }
 
-        LOG.info("Target directory: ${targetDir.virtualFile.path}")
+        LOG.info("Target directory found")
 
         val transferable = e.transferable
         LOG.info("Available flavors: ${transferable.transferDataFlavors.map { it.mimeType }}")
@@ -482,7 +481,7 @@ class StickyHeaderComponent(
     }
 
     private fun moveFilesToDirectory(files: List<java.io.File>, targetDir: PsiDirectory) {
-        LOG.info("moveFilesToDirectory called: ${files.size} files to ${targetDir.virtualFile.path}")
+        LOG.info("moveFilesToDirectory called: ${files.size} files")
 
         val psiElements = files.mapNotNull { file ->
             ReadAction.compute<com.intellij.psi.PsiElement?, Nothing> {
@@ -539,6 +538,14 @@ class StickyHeaderComponent(
 
         val visibleRect = tree.visibleRect
         if (visibleRect.height <= 0 || visibleRect.width <= 0) {
+            return
+        }
+
+        if (visibleRect.y == 0) {
+            if (stickyRows.isNotEmpty()) {
+                clearSticky()
+                onBoundsUpdateNeeded()
+            }
             return
         }
 

@@ -2,6 +2,7 @@ package com.github.erjotek.stickyprojectfolder.ui
 
 import com.github.erjotek.stickyprojectfolder.settings.StickyProjectProjectSettings
 import com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings
+import com.github.erjotek.stickyprojectfolder.util.PathValidator
 import com.github.erjotek.stickyprojectfolder.util.StickyScrollUtil
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.ide.projectView.ProjectViewNode
@@ -204,10 +205,10 @@ class AutoCollapseManager(
         if (!settings.state.autoCollapseEnabled) return
 
         val basePath = project.basePath ?: return
-        val pathsConfig = settings.state.autoCollapsePaths
+        val pathsConfig = settings.state.autoCollapsePathsList
         val pathsToCollapse = mutableListOf<String>()
-        if (pathsConfig.isNotBlank()) {
-            pathsToCollapse += pathsConfig.split(";")
+        if (pathsConfig.isNotEmpty()) {
+            pathsToCollapse += pathsConfig
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
         }
@@ -235,7 +236,7 @@ class AutoCollapseManager(
         var didCollapseAny = false
 
         for (relativePath in normalizedPathsToCollapse) {
-            val absolutePath = "$basePath/$relativePath"
+            val absolutePath = PathValidator.validatePath(basePath, relativePath) ?: continue
             
             val isSelectedInsideThisPath = selectedFilePath != null && 
                 (selectedFilePath.startsWith("$absolutePath/") || selectedFilePath == absolutePath)
