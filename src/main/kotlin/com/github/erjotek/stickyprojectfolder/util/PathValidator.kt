@@ -1,6 +1,7 @@
 package com.github.erjotek.stickyprojectfolder.util
 
 import com.intellij.openapi.diagnostic.Logger
+import java.io.File
 import java.nio.file.Paths
 
 object PathValidator {
@@ -30,5 +31,30 @@ object PathValidator {
             LOG.warn("Invalid path: '$relativePath' relative to '$basePath'", e)
         }
         return null
+    }
+
+    /**
+     * Checks if the relative path is valid (inside base path) AND exists on the filesystem.
+     */
+    fun isPathValid(basePath: String, relativePath: String): Boolean {
+        val path = validatePath(basePath, relativePath) ?: return false
+        return try {
+            File(path).exists()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Checks if the target absolute path is a descendant of the base path.
+     */
+    fun isDescendant(basePath: String, targetPath: String): Boolean {
+        return try {
+            val base = Paths.get(basePath).toAbsolutePath().normalize()
+            val target = Paths.get(targetPath).toAbsolutePath().normalize()
+            target.startsWith(base)
+        } catch (e: Exception) {
+            false
+        }
     }
 }

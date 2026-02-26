@@ -1,5 +1,6 @@
 package com.github.erjotek.stickyprojectfolder.settings
 
+import com.github.erjotek.stickyprojectfolder.util.PathValidator
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
@@ -168,8 +169,11 @@ class StickyProjectConfigurable(
             val basePath = project.basePath ?: return@chooseFile
             val selectedPath = selectedFile.path
 
-            if (selectedPath.startsWith(basePath)) {
-                var relativePath = selectedPath.removePrefix(basePath).removePrefix("/")
+            if (PathValidator.isDescendant(basePath, selectedPath)) {
+                val base = java.nio.file.Paths.get(basePath).toAbsolutePath().normalize()
+                val selected = java.nio.file.Paths.get(selectedPath).toAbsolutePath().normalize()
+                var relativePath = base.relativize(selected).toString().replace('\\', '/')
+
                 if (relativePath.isNotEmpty() && !relativePath.endsWith("/")) {
                     relativePath += "/"
                 }

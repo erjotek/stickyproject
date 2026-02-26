@@ -1,11 +1,19 @@
 package com.github.erjotek.stickyprojectfolder.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.nio.file.Paths
 
 class PathValidatorTest {
+
+    @get:Rule
+    val tempFolder = TemporaryFolder()
 
     @Test
     fun testValidPathInsideProject() {
@@ -65,5 +73,62 @@ class PathValidatorTest {
         val result = PathValidator.validatePath(basePath, relative)
 
         assertEquals(expected.replace("\\", "/"), result?.replace("\\", "/"))
+    }
+
+    // New tests for isPathValid and isDescendant
+
+    @Test
+    fun testIsPathValid_Exists() {
+        val root = tempFolder.newFolder("root")
+        val child = File(root, "child").apply { mkdir() }
+
+        assertTrue(PathValidator.isPathValid(root.absolutePath, "child"))
+    }
+
+    @Test
+    fun testIsPathValid_DoesNotExist() {
+        val root = tempFolder.newFolder("root")
+
+        assertFalse(PathValidator.isPathValid(root.absolutePath, "nonexistent"))
+    }
+
+    @Test
+    fun testIsPathValid_TraversalAttempt() {
+        val root = tempFolder.newFolder("root")
+        val secret = tempFolder.newFile("secret")
+
+        // secret is outside root
+        // ../secret
+        val relative = "../${secret.name}"
+        assertFalse(PathValidator.isPathValid(root.absolutePath, relative))
+    }
+
+    @Test
+    fun testIsDescendant_True() {
+        val root = tempFolder.newFolder("root")
+        val child = File(root, "child")
+
+        assertTrue(PathValidator.isDescendant(root.absolutePath, child.absolutePath))
+    }
+
+    @Test
+    fun testIsDescendant_False() {
+        val root = tempFolder.newFolder("root")
+        val other = tempFolder.newFolder("other")
+
+        assertFalse(PathValidator.isDescendant(root.absolutePath, other.absolutePath))
+    }
+
+    @Test
+    fun testIsDescendant_SamePath() {
+        val root = tempFolder.newFolder("root")
+        assertTrue(PathValidator.isDescendant(root.absolutePath, root.absolutePath))
+    }
+
+    @Test
+    fun testIsDescendant_NestedDeep() {
+        val root = tempFolder.newFolder("root")
+        val nested = File(root, "a/b/c")
+        assertTrue(PathValidator.isDescendant(root.absolutePath, nested.absolutePath))
     }
 }
