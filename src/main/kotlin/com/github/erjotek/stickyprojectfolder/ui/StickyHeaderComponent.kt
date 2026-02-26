@@ -250,7 +250,7 @@ class StickyHeaderComponent(
             return
         }
 
-        LOG.info("Target directory: ${targetDir.virtualFile.path}")
+        LOG.info("Target directory found")
 
         val transferable = e.transferable
         LOG.info("Available flavors: ${transferable.transferDataFlavors.map { it.mimeType }}")
@@ -461,7 +461,7 @@ class StickyHeaderComponent(
     }
 
     private fun moveFilesToDirectory(files: List<java.io.File>, targetDir: PsiDirectory) {
-        LOG.info("moveFilesToDirectory called: ${files.size} files to ${targetDir.virtualFile.path}")
+        LOG.info("moveFilesToDirectory called: ${files.size} files")
 
         val psiElements = files.mapNotNull { file ->
             ReadAction.compute<com.intellij.psi.PsiElement?, Nothing> {
