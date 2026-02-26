@@ -28,7 +28,6 @@ import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
 import java.awt.dnd.*
 import java.awt.event.*
-import java.lang.reflect.Method
 import java.util.Collections
 import java.util.WeakHashMap
 import javax.swing.*
@@ -520,6 +519,14 @@ class StickyHeaderComponent(
 
         val visibleRect = tree.visibleRect
         if (visibleRect.height <= 0 || visibleRect.width <= 0) {
+            return
+        }
+
+        if (visibleRect.y == 0) {
+            if (stickyRows.isNotEmpty()) {
+                clearSticky()
+                onBoundsUpdateNeeded()
+            }
             return
         }
 

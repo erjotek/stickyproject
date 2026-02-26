@@ -354,10 +354,20 @@ class StickyScrollManager(private val project: Project) : Disposable {
             return
         }
 
-        val x = viewportLocationOnScreen.x - layeredPaneLocationOnScreen.x
+        var stickyX = viewportLocationOnScreen.x - layeredPaneLocationOnScreen.x
         val y = viewportLocationOnScreen.y - layeredPaneLocationOnScreen.y
 
-        sticky.setBounds(x, y, viewportBounds.width, stickyHeight)
+        var stickyWidth = viewportBounds.width
+        val vScrollBar = sp.verticalScrollBar
+        val settings = com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings.instance
+        if (settings.state.avoidTransparentScrollbarOverlap && vScrollBar != null && vScrollBar.isVisible && !vScrollBar.isOpaque) {
+            stickyWidth -= vScrollBar.width
+            if (!sp.componentOrientation.isLeftToRight) {
+                stickyX += vScrollBar.width
+            }
+        }
+
+        sticky.setBounds(stickyX, y, stickyWidth, stickyHeight)
     }
 
     private fun detach() {

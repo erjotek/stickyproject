@@ -39,6 +39,7 @@ class StickyProjectConfigurable(
     private var excludedPathsList: JBList<String>? = null
     private var excludedListPanel: JPanel? = null
     private var excludedReadOnlyLabel: JBLabel? = null
+    private var avoidTransparentScrollbarOverlapCheckbox: JBCheckBox? = null
 
     override fun getDisplayName(): String = "Sticky Project"
 
@@ -48,6 +49,7 @@ class StickyProjectConfigurable(
         maxStickyLimitSpinner = JBIntSpinner(10, 1, 100)
         autoCollapseEnabledCheckbox = JBCheckBox("Enable auto-collapse directories (global settings)")
         autoCollapseIncludeExcludedCheckbox = JBCheckBox("Auto-collapse excluded folders")
+        avoidTransparentScrollbarOverlapCheckbox = JBCheckBox("Adjust sticky width for transparent scrollbar")
 
         pathsListModel = DefaultListModel<String>()
         pathsList = JBList<String>(pathsListModel!!).apply {
@@ -130,6 +132,7 @@ class StickyProjectConfigurable(
 
         val stickyInnerPanel = FormBuilder.createFormBuilder()
             .addLabeledComponent(JBLabel("Max sticky directories (1-100):"), maxStickyLimitSpinner!!, 1, false)
+            .addComponent(avoidTransparentScrollbarOverlapCheckbox!!, JBUI.scale(2))
             .panel
 
         val stickyFieldset = JPanel(BorderLayout()).apply {
@@ -196,7 +199,9 @@ class StickyProjectConfigurable(
 
     private fun setPathsToModel(paths: List<String>) {
         pathsListModel?.clear()
-        paths.forEach { pathsListModel?.addElement(it) }
+        paths.map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .forEach { pathsListModel?.addElement(it) }
         sortPathsListModel()
     }
 
@@ -257,6 +262,7 @@ class StickyProjectConfigurable(
         val projectSettings = StickyProjectProjectSettings.getInstance(project)
         return maxStickyLimitSpinner?.number != settings.state.maxStickyLimit ||
             autoCollapseEnabledCheckbox?.isSelected != settings.state.autoCollapseEnabled ||
+            avoidTransparentScrollbarOverlapCheckbox?.isSelected != settings.state.avoidTransparentScrollbarOverlap ||
             autoCollapseIncludeExcludedCheckbox?.isSelected != projectSettings.state.autoCollapseIncludeExcluded ||
             getPathsFromModel() != settings.state.autoCollapsePathsList
     }
@@ -266,9 +272,9 @@ class StickyProjectConfigurable(
         val projectSettings = StickyProjectProjectSettings.getInstance(project)
         settings.state.maxStickyLimit = maxStickyLimitSpinner?.number ?: 10
         settings.state.autoCollapseEnabled = autoCollapseEnabledCheckbox?.isSelected ?: true
+        settings.state.avoidTransparentScrollbarOverlap = avoidTransparentScrollbarOverlapCheckbox?.isSelected ?: false
         projectSettings.state.autoCollapseIncludeExcluded = autoCollapseIncludeExcludedCheckbox?.isSelected ?: false
-        settings.state.autoCollapsePathsList.clear()
-        settings.state.autoCollapsePathsList.addAll(getPathsFromModel())
+        settings.state.autoCollapsePathsList = getPathsFromModel().toMutableList()
     }
 
     override fun reset() {
@@ -276,6 +282,7 @@ class StickyProjectConfigurable(
         val projectSettings = StickyProjectProjectSettings.getInstance(project)
         maxStickyLimitSpinner?.number = settings.state.maxStickyLimit
         autoCollapseEnabledCheckbox?.isSelected = settings.state.autoCollapseEnabled
+        avoidTransparentScrollbarOverlapCheckbox?.isSelected = settings.state.avoidTransparentScrollbarOverlap
         autoCollapseIncludeExcludedCheckbox?.isSelected = projectSettings.state.autoCollapseIncludeExcluded
         setPathsToModel(settings.state.autoCollapsePathsList)
         updateExcludedPathsModel()
@@ -293,6 +300,7 @@ class StickyProjectConfigurable(
         excludedPathsList = null
         excludedListPanel = null
         excludedReadOnlyLabel = null
+        avoidTransparentScrollbarOverlapCheckbox = null
     }
 
     private inner class PathListCellRenderer(

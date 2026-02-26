@@ -24,8 +24,7 @@ private fun getCurrentPaths(): List<String> {
 }
 
 private fun savePaths(paths: List<String>) {
-    StickyProjectSettings.instance.state.autoCollapsePathsList.clear()
-    StickyProjectSettings.instance.state.autoCollapsePathsList.addAll(paths)
+    StickyProjectSettings.instance.state.autoCollapsePathsList = paths.toMutableList()
 }
 
 class AddToAutoCollapseAction : AnAction("Add to Auto-Collapse"), DumbAware {
