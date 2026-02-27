@@ -13,6 +13,7 @@ import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
+import com.github.erjotek.stickyprojectfolder.util.PathValidator as SecurePathValidator
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
@@ -168,8 +169,8 @@ class StickyProjectConfigurable(
             val basePath = project.basePath ?: return@chooseFile
             val selectedPath = selectedFile.path
 
-            if (selectedPath.startsWith(basePath)) {
-                var relativePath = selectedPath.removePrefix(basePath).removePrefix("/")
+            var relativePath = SecurePathValidator.getValidatedRelativePath(basePath, selectedPath)
+            if (relativePath != null) {
                 if (relativePath.isNotEmpty() && !relativePath.endsWith("/")) {
                     relativePath += "/"
                 }
@@ -243,14 +244,15 @@ class StickyProjectConfigurable(
         return excludedRoots
             .mapNotNull { root ->
                 val path = root.path
-                if (!path.startsWith(basePath)) {
-                    null
-                } else {
-                    var relativePath = path.removePrefix(basePath).removePrefix("/")
-                    if (relativePath.isNotEmpty() && !relativePath.endsWith("/")) {
-                        relativePath += "/"
+                val relativePath = SecurePathValidator.getValidatedRelativePath(basePath, path)
+                if (relativePath != null) {
+                    var finalPath = relativePath
+                    if (finalPath.isNotEmpty() && !finalPath.endsWith("/")) {
+                        finalPath += "/"
                     }
-                    relativePath.takeIf { it.isNotEmpty() }
+                    finalPath.takeIf { it.isNotEmpty() }
+                } else {
+                    null
                 }
             }
             .distinct()
