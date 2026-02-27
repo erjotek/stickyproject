@@ -66,4 +66,53 @@ class PathValidatorTest {
 
         assertEquals(expected.replace("\\", "/"), result?.replace("\\", "/"))
     }
+
+    // --- New tests for getValidatedRelativePath ---
+
+    @Test
+    fun testGetValidatedRelativePath_ValidNested() {
+        val currentDir = Paths.get(".").toAbsolutePath().normalize()
+        val base = currentDir.resolve("project/root")
+        val target = base.resolve("src/main/kotlin")
+
+        val result = PathValidator.getValidatedRelativePath(base.toString(), target.toString())
+        assertEquals("src/main/kotlin", result)
+    }
+
+    @Test
+    fun testGetValidatedRelativePath_SamePath() {
+        val currentDir = Paths.get(".").toAbsolutePath().normalize()
+        val base = currentDir.resolve("project/root")
+
+        val result = PathValidator.getValidatedRelativePath(base.toString(), base.toString())
+        // Relativize of same path is empty string
+        assertEquals("", result)
+    }
+
+    @Test
+    fun testGetValidatedRelativePath_TraversalOutside() {
+        val currentDir = Paths.get(".").toAbsolutePath().normalize()
+        val base = currentDir.resolve("project/root")
+        val target = currentDir.resolve("project/other_project/secret")
+
+        val result = PathValidator.getValidatedRelativePath(base.toString(), target.toString())
+        assertNull("Should return null when target is outside base", result)
+    }
+
+    @Test
+    fun testGetValidatedRelativePath_WithDotDotInside() {
+        val currentDir = Paths.get(".").toAbsolutePath().normalize()
+        val base = currentDir.resolve("project/root")
+        // project/root/src/../build -> project/root/build
+        val target = base.resolve("src/../build")
+
+        val result = PathValidator.getValidatedRelativePath(base.toString(), target.toString())
+        assertEquals("build", result)
+    }
+
+    @Test
+    fun testGetValidatedRelativePath_EmptyInputs() {
+        assertNull(PathValidator.getValidatedRelativePath("", "/foo"))
+        assertNull(PathValidator.getValidatedRelativePath("/foo", ""))
+    }
 }

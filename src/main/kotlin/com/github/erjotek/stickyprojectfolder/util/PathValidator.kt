@@ -31,4 +31,31 @@ object PathValidator {
         }
         return null
     }
+
+    /**
+     * Validates that the target path is contained within the base path and returns the relative path.
+     * This is useful for validating absolute paths from file choosers or external sources.
+     *
+     * @param basePath The absolute path of the project base directory.
+     * @param targetPath The absolute path to validate.
+     * @return The normalized relative path (relative to basePath) if valid, or null if invalid or traverses outside.
+     */
+    fun getValidatedRelativePath(basePath: String, targetPath: String): String? {
+        try {
+            if (basePath.isBlank() || targetPath.isBlank()) return null
+
+            val base = Paths.get(basePath).toAbsolutePath().normalize()
+            val target = Paths.get(targetPath).toAbsolutePath().normalize()
+
+            if (target.startsWith(base)) {
+                val relative = base.relativize(target).toString().replace('\\', '/')
+                return relative
+            } else {
+                LOG.warn("Path traversal detected: '$targetPath' is not inside '$basePath'")
+            }
+        } catch (e: Exception) {
+            LOG.warn("Invalid path: '$targetPath' relative to '$basePath'", e)
+        }
+        return null
+    }
 }
