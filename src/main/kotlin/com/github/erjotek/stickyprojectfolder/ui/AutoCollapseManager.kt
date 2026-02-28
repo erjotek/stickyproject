@@ -279,11 +279,7 @@ class AutoCollapseManager(
         }
         return allExcludedPathsCache!!.value
             .mapNotNull { path ->
-                if (!path.startsWith(basePath)) {
-                    null
-                } else {
-                    path.removePrefix(basePath).removePrefix("/")
-                }
+                PathValidator.getValidatedRelativePath(basePath, path)
             }
             .filter { it.isNotBlank() }
     }

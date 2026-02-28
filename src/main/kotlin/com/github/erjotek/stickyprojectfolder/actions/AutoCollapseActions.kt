@@ -7,14 +7,18 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.DumbAware
 
+import com.github.erjotek.stickyprojectfolder.util.PathValidator
+
 private fun getRelativePath(event: AnActionEvent): String? {
     val project = event.project ?: return null
     val basePath = project.basePath ?: return null
     val virtualFile = event.getData(CommonDataKeys.VIRTUAL_FILE) ?: return null
     if (!virtualFile.isDirectory) return null
     val filePath = virtualFile.path
-    if (!filePath.startsWith(basePath)) return null
-    var relative = filePath.removePrefix(basePath).removePrefix("/")
+
+    val validatedRelativePath = PathValidator.getValidatedRelativePath(basePath, filePath) ?: return null
+    var relative = validatedRelativePath
+
     if (relative.isNotEmpty() && !relative.endsWith("/")) relative += "/"
     return relative.takeIf { it.isNotEmpty() }
 }
