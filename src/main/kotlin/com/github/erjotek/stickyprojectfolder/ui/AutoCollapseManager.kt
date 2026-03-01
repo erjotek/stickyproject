@@ -239,7 +239,7 @@ class AutoCollapseManager(
             val absolutePath = PathValidator.validatePath(basePath, relativePath) ?: continue
             
             val isSelectedInsideThisPath = selectedFilePath != null && 
-                (selectedFilePath.startsWith("$absolutePath/") || selectedFilePath == absolutePath)
+                PathValidator.getValidatedRelativePath(absolutePath, selectedFilePath) != null
 
             if (!isSelectedInsideThisPath) {
                 didCollapseAny = collapsePathInTree(relativePath, absolutePath) || didCollapseAny
@@ -279,11 +279,7 @@ class AutoCollapseManager(
         }
         return allExcludedPathsCache!!.value
             .mapNotNull { path ->
-                if (!path.startsWith(basePath)) {
-                    null
-                } else {
-                    path.removePrefix(basePath).removePrefix("/")
-                }
+                PathValidator.getValidatedRelativePath(basePath, path)
             }
             .filter { it.isNotBlank() }
     }
@@ -331,8 +327,7 @@ class AutoCollapseManager(
 
     private fun isAncestor(ancestor: String, descendant: String): Boolean {
         if (descendant == ancestor) return true
-        return descendant.startsWith(ancestor) &&
-            (ancestor.endsWith("/") || descendant.length > ancestor.length && descendant[ancestor.length] == '/')
+        return PathValidator.getValidatedRelativePath(ancestor, descendant) != null
     }
 
     private fun getVirtualFileFromPath(path: TreePath?): VirtualFile? {

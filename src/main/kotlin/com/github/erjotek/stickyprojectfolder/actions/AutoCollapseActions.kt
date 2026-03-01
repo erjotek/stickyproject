@@ -13,8 +13,10 @@ private fun getRelativePath(event: AnActionEvent): String? {
     val virtualFile = event.getData(CommonDataKeys.VIRTUAL_FILE) ?: return null
     if (!virtualFile.isDirectory) return null
     val filePath = virtualFile.path
-    if (!filePath.startsWith(basePath)) return null
-    var relative = filePath.removePrefix(basePath).removePrefix("/")
+
+    val validatedRelativePath = com.github.erjotek.stickyprojectfolder.util.PathValidator.getValidatedRelativePath(basePath, filePath) ?: return null
+
+    var relative = validatedRelativePath
     if (relative.isNotEmpty() && !relative.endsWith("/")) relative += "/"
     return relative.takeIf { it.isNotEmpty() }
 }
