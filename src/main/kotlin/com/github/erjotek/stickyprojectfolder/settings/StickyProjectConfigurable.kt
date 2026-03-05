@@ -308,7 +308,9 @@ class StickyProjectConfigurable(
     private inner class PathListCellRenderer(
         private val model: ListModel<String>
     ) : ListCellRenderer<String> {
-        private val label = JLabel()
+        private val label = JLabel().apply {
+            putClientProperty("html.disable", true)
+        }
         private val folderIcon = UIManager.getIcon("FileView.directoryIcon")
         private var nestedPaths: Set<String> = emptySet()
 
