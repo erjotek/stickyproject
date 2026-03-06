@@ -341,7 +341,7 @@ class StickyProjectConfigurable(
 
             val basePath = project.basePath
             val pathExists = if (basePath != null && value != null) {
-                PathValidator.isPathValid(basePath, value)
+                SecurePathValidator.validatePath(basePath, value)?.let { File(it).exists() } ?: false
             } else {
                 false
             }
