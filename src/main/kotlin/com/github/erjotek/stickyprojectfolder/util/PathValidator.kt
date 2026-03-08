@@ -24,10 +24,10 @@ object PathValidator {
             if (resolved.startsWith(base)) {
                 return resolved.toString().replace('\\', '/')
             } else {
-                LOG.warn("Path traversal detected: '$relativePath' attempts to escape '$basePath'")
+                LOG.warn("Path traversal detected: relative path attempts to escape base path")
             }
         } catch (e: Exception) {
-            LOG.warn("Invalid path: '$relativePath' relative to '$basePath'", e)
+            LOG.warn("Invalid path relative to base path", e)
         }
         return null
     }
@@ -51,10 +51,10 @@ object PathValidator {
                 val relative = base.relativize(target).toString().replace('\\', '/')
                 return relative
             } else {
-                LOG.warn("Path traversal detected: '$targetPath' is not inside '$basePath'")
+                LOG.warn("Path traversal detected: target path is not inside base path")
             }
         } catch (e: Exception) {
-            LOG.warn("Invalid path: '$targetPath' relative to '$basePath'", e)
+            LOG.warn("Invalid path relative to base path", e)
         }
         return null
     }
