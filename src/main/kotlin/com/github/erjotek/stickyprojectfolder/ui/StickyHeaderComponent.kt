@@ -32,6 +32,7 @@ import java.util.WeakHashMap
 import javax.swing.*
 import javax.swing.event.TreeModelEvent
 import javax.swing.tree.DefaultMutableTreeNode
+import com.github.erjotek.stickyprojectfolder.util.StickyScrollUtil
 import javax.swing.tree.TreePath
 
 private val LOG = Logger.getInstance(StickyHeaderComponent::class.java)
@@ -108,26 +109,8 @@ class StickyHeaderComponent(
                 if (path != null && idx != -1) {
                     onStickyHeaderClick()
                     tree.selectionPath = path
-                    // Calculate how many parent folders will become sticky after scroll
-                    // idx is 0-based, so idx parent folders will be above the clicked one
                     val parentStickyCount = idx
-                    val parentStickyHeight = parentStickyCount * cachedRowHeight
-                    // Scroll to the folder position minus the space needed for parent sticky headers
-                    val row = tree.getRowForPath(path)
-                    if (row != -1) {
-                        val rowBounds = tree.getRowBounds(row)
-                        if (rowBounds != null) {
-                            // Target Y: folder's Y minus parent sticky height minus a few pixels margin
-                            val targetY = (rowBounds.y - parentStickyHeight - 3).coerceAtLeast(0)
-                            val visibleRect = tree.visibleRect
-                            tree.scrollRectToVisible(java.awt.Rectangle(
-                                visibleRect.x,
-                                targetY,
-                                visibleRect.width,
-                                visibleRect.height
-                            ))
-                        }
-                    }
+                    StickyScrollUtil.scrollToMakeVisibleBelowSticky(tree, path, cachedRowHeight, parentStickyCount)
                     e.consume()
                 }
             }
@@ -241,7 +224,7 @@ class StickyHeaderComponent(
             return
         }
 
-        val targetDir = ReadAction.compute<PsiDirectory?, Nothing> {
+        val targetDir = com.intellij.openapi.application.runReadAction {
             getTargetDirectoryAt(e.location.y)
         }
         if (targetDir == null) {
@@ -255,7 +238,7 @@ class StickyHeaderComponent(
         val transferable = e.transferable
         LOG.info("Available flavors: ${transferable.transferDataFlavors.map { it.mimeType }}")
 
-        val psiElements = ReadAction.compute<Array<PsiElement>, Nothing> {
+        val psiElements = com.intellij.openapi.application.runReadAction {
             extractPsiElementsFromTransferable(transferable)
         }
 
@@ -454,7 +437,7 @@ class StickyHeaderComponent(
             if (!virtualFileLoading.contains(node)) {
                 virtualFileLoading.add(node)
                 backgroundExecutor.execute {
-                    val vf = ReadAction.compute<VirtualFile?, Nothing> {
+                    val vf = com.intellij.openapi.application.runReadAction {
                         extractVirtualFileFromNode(node)
                     }
 
@@ -484,7 +467,7 @@ class StickyHeaderComponent(
         LOG.info("moveFilesToDirectory called: ${files.size} files")
 
         val psiElements = files.mapNotNull { file ->
-            ReadAction.compute<com.intellij.psi.PsiElement?, Nothing> {
+            com.intellij.openapi.application.runReadAction {
                 val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByIoFile(file)
                 if (vf != null) resolvePsiElement(vf) else null
             }
@@ -784,7 +767,7 @@ class StickyHeaderComponent(
                     if (!colorLoading.contains(cacheKey)) {
                         colorLoading.add(cacheKey)
                         backgroundExecutor.execute {
-                            val color = ReadAction.compute<Color?, Nothing> {
+                            val color = com.intellij.openapi.application.runReadAction {
                                 try {
                                     val colorManager = FileColorManager.getInstance(project)
                                     if (colorManager.isEnabled && colorManager.isEnabledForProjectView) {

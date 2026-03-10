@@ -31,5 +31,10 @@ class MyPluginTest : BasePlatformTestCase() {
 
 
 
-    override fun getTestDataPath() = "src/test/testData/rename"
+    override fun setUp() {
+        super.setUp()
+        com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess.allowRootAccess(testRootDisposable, testDataPath)
+    }
+
+    override fun getTestDataPath() = java.io.File("src/test/testData/rename").absolutePath
 }

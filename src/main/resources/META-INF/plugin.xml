@@ -5,8 +5,19 @@
     <vendor email="rafal.janiczek@gmail.com" url="https://github.com/erjotek" name="Rafał eRJot Janiczek">Rafał Janiczek</vendor>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lang</depends>
 
     <resource-bundle>messages.MyBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="com.github.erjotek.stickyprojectfolder.startup.MyProjectActivity" />
+        <applicationService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings"/>
+        <projectService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.StickyProjectProjectSettings"/>
+        <projectConfigurable parentId="tools" instance="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
+                             id="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
+                             displayName="Sticky Project Folder"/>
+        <projectService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.PinnedFoldersSettings"/>
+    </extensions>
 
     <actions>
         <action id="StickyProject.AddToAutoCollapse"
@@ -19,14 +30,15 @@
                 text="Remove from Auto-Collapse">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
+        <action id="StickyProject.PinFolder"
+                class="com.github.erjotek.stickyprojectfolder.actions.PinFolderAction"
+                text="Set as Pinned">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+        <action id="StickyProject.UnpinFolder"
+                class="com.github.erjotek.stickyprojectfolder.actions.UnpinFolderAction"
+                text="Remove from Pinned">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
     </actions>
-
-    <extensions defaultExtensionNs="com.intellij">
-        <postStartupActivity implementation="com.github.erjotek.stickyprojectfolder.startup.MyProjectActivity" />
-        <applicationService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings"/>
-        <projectService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.StickyProjectProjectSettings"/>
-        <projectConfigurable parentId="tools" instance="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
-                             id="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
-                             displayName="Sticky Project Folder"/>
-    </extensions>
 </idea-plugin>

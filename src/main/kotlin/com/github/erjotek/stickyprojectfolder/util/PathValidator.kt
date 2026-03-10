@@ -10,9 +10,12 @@ object PathValidator {
         return input.replace('\n', '_').replace('\r', '_')
     }
 
+    /** Characters that must not appear in paths to prevent injection attacks. */
+    private val FORBIDDEN_CHARS = charArrayOf(';', '\u0000', '\n', '\r')
+
     /**
      * Validates that the relative path, when resolved against the base path,
-     * stays within the base path directory.
+     * stays within the base path directory and does not contain forbidden characters.
      *
      * @param basePath The absolute path of the project base directory.
      * @param relativePath The relative path to append.
@@ -21,6 +24,12 @@ object PathValidator {
     fun validatePath(basePath: String, relativePath: String): String? {
         try {
             if (basePath.isBlank() || relativePath.isBlank()) return null
+
+            // Check for forbidden characters
+            if (FORBIDDEN_CHARS.any { c -> relativePath.contains(c) }) {
+                LOG.warn("Path contains forbidden characters: '$relativePath'")
+                return null
+            }
 
             val base = Paths.get(basePath).toAbsolutePath().normalize()
             val resolved = base.resolve(relativePath).toAbsolutePath().normalize()

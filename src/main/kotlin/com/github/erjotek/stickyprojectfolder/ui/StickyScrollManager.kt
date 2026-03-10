@@ -83,7 +83,7 @@ class StickyScrollManager(private val project: Project) : Disposable {
 
     private fun tryInstall() {
         val projectView = ProjectView.getInstance(project)
-        val pane = projectView.currentProjectViewPane as? AbstractProjectViewPane
+        val pane = projectView.currentProjectViewPane
 
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)
         if (toolWindow != null && contentManagerListener == null) {
@@ -276,6 +276,10 @@ class StickyScrollManager(private val project: Project) : Disposable {
     }
 
     private fun handleAutoscrollIfNeeded(tree: JTree, sp: JScrollPane) {
+        if (AutoCollapseManager.isNavigationSuppressed()) {
+            return
+        }
+
         if (skipNextAutoscroll) {
             skipNextAutoscroll = false
             return

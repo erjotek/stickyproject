@@ -33,21 +33,21 @@ class AutoCollapseManagerBenchmarkTest : BasePlatformTestCase() {
             contentEntry.addExcludeFolder(contentEntry.url + "/excluded2")
         }
 
-        val method = AutoCollapseManager::class.java.getDeclaredMethod("getExcludedPaths", String::class.java)
+        val method = AutoCollapseManager.Companion::class.java.getDeclaredMethod("getExcludedPaths", Project::class.java, String::class.java)
         method.isAccessible = true
 
         val basePath = project.basePath ?: ""
 
         // Warmup
         repeat(1000) {
-            method.invoke(autoCollapseManager, basePath)
+            method.invoke(AutoCollapseManager.Companion, project, basePath)
         }
 
         // Benchmark
         val iterations = 5000
         val totalTime = measureNanoTime {
             repeat(iterations) {
-                method.invoke(autoCollapseManager, basePath)
+                method.invoke(AutoCollapseManager.Companion, project, basePath)
             }
         }
 
@@ -56,7 +56,7 @@ class AutoCollapseManagerBenchmarkTest : BasePlatformTestCase() {
     }
 
     fun testCacheInvalidation() {
-        val method = AutoCollapseManager::class.java.getDeclaredMethod("getExcludedPaths", String::class.java)
+        val method = AutoCollapseManager.Companion::class.java.getDeclaredMethod("getExcludedPaths", Project::class.java, String::class.java)
         method.isAccessible = true
 
         // Create content root
@@ -66,7 +66,7 @@ class AutoCollapseManagerBenchmarkTest : BasePlatformTestCase() {
         PsiTestUtil.addContentRoot(myFixture.module, contentRoot)
 
         // Initial call
-        val initialResult = method.invoke(autoCollapseManager, simulatedBasePath) as List<String>
+        val initialResult = method.invoke(AutoCollapseManager.Companion, project, simulatedBasePath) as List<String>
         val initialSize = initialResult.size
 
         // Add excluded folder
@@ -74,7 +74,7 @@ class AutoCollapseManagerBenchmarkTest : BasePlatformTestCase() {
         PsiTestUtil.addExcludedRoot(myFixture.module, excludedDir)
 
         // Call again
-        val newResult = method.invoke(autoCollapseManager, simulatedBasePath) as List<String>
+        val newResult = method.invoke(AutoCollapseManager.Companion, project, simulatedBasePath) as List<String>
 
         assertEquals("Should have one more excluded path", initialSize + 1, newResult.size)
         assertTrue("Result should contain the new excluded folder", newResult.any { it.endsWith("excluded") })

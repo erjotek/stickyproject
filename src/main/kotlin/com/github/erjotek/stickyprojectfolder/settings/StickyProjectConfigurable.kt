@@ -7,6 +7,12 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.ui.Messages
+
+import com.intellij.ui.table.JBTable
+import com.intellij.util.ui.ColumnInfo
+import com.intellij.util.ui.ListTableModel
+import com.github.erjotek.stickyprojectfolder.util.PathValidator
+
 import com.intellij.ui.JBColor
 import com.intellij.ui.JBIntSpinner
 import com.intellij.ui.ToolbarDecorator
@@ -40,6 +46,10 @@ class StickyProjectConfigurable(
     private var excludedPathsList: JBList<String>? = null
     private var excludedListPanel: JPanel? = null
     private var excludedReadOnlyLabel: JBLabel? = null
+
+    private var pinnedTableModel: ListTableModel<PinnedFolderItem>? = null
+    private var pinnedTable: JBTable? = null
+    private var pinnedPanel: JPanel? = null
     private var avoidTransparentScrollbarOverlapCheckbox: JBCheckBox? = null
 
     override fun getDisplayName(): String = "Sticky Project"
@@ -146,15 +156,153 @@ class StickyProjectConfigurable(
             add(stickyInnerPanel, BorderLayout.CENTER)
         }
 
+        // --- Pinned Folders fieldset ---
+        val pathColumnInfo = object : ColumnInfo<PinnedFolderItem, String>("Path") {
+            override fun valueOf(item: PinnedFolderItem): String = item.path
+            override fun isCellEditable(item: PinnedFolderItem): Boolean = false
+        }
+        val descColumnInfo = object : ColumnInfo<PinnedFolderItem, String>("Description") {
+            override fun valueOf(item: PinnedFolderItem): String = item.description
+            override fun isCellEditable(item: PinnedFolderItem): Boolean = true
+            override fun setValue(item: PinnedFolderItem, value: String) {
+                item.description = value
+            }
+        }
+
+        val pinnedSettings = PinnedFoldersSettings.getInstance(project)
+        pinnedTableModel = ListTableModel<PinnedFolderItem>(
+            arrayOf(pathColumnInfo, descColumnInfo),
+            pinnedSettings.state.pinnedFolders.map { it.copy() }.toMutableList()
+        )
+        pinnedTable = JBTable(pinnedTableModel!!).apply {
+            setShowGrid(false)
+            tableHeader.reorderingAllowed = false
+            columnModel.getColumn(0).preferredWidth = JBUI.scale(250)
+            columnModel.getColumn(1).preferredWidth = JBUI.scale(150)
+        }
+
+        // Custom renderer: gray out non-existent paths (both path and description columns)
+        pinnedTable!!.setDefaultRenderer(Any::class.java, object : javax.swing.table.DefaultTableCellRenderer() {
+            override fun getTableCellRendererComponent(
+                table: javax.swing.JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
+            ): Component {
+                val comp = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+                if (!isSelected) {
+                    val item = pinnedTableModel?.items?.getOrNull(row)
+                    if (item != null) {
+                        val basePath = project.basePath
+                        val pathExists = if (basePath != null) {
+                            PathValidator.validatePath(basePath, item.path) != null &&
+                                File("$basePath/${item.path.trimEnd('/')}").exists()
+                        } else false
+                        foreground = if (pathExists) {
+                            JBColor.namedColor("Label.foreground", JBColor.foreground())
+                        } else {
+                            JBColor.namedColor("Label.disabledForeground", JBColor.GRAY)
+                        }
+                    }
+                }
+                return comp
+            }
+        })
+
+        val pinnedToolbar = ToolbarDecorator.createDecorator(pinnedTable!!)
+            .setAddAction { addPinnedFolder() }
+            .setRemoveAction { removePinnedFolder() }
+            .setMoveUpAction { movePinnedUp() }
+            .setMoveDownAction { movePinnedDown() }
+
+        pinnedPanel = pinnedToolbar.createPanel().apply {
+            preferredSize = Dimension(0, JBUI.scale(150))
+        }
+
+        val pinnedInnerPanel = FormBuilder.createFormBuilder()
+            .addComponent(pinnedPanel!!, 1)
+            .panel
+
+        val pinnedFieldset = JPanel(BorderLayout()).apply {
+            border = BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                "Pinned folders",
+                TitledBorder.DEFAULT_JUSTIFICATION,
+                TitledBorder.DEFAULT_POSITION
+            )
+            add(pinnedInnerPanel, BorderLayout.CENTER)
+        }
+
         mySettingsComponent = FormBuilder.createFormBuilder()
             .addComponent(stickyFieldset, JBUI.scale(4))
             .addComponent(autoCollapseFieldset, JBUI.scale(8))
+            .addComponent(pinnedFieldset, JBUI.scale(8))
             .addComponentFillVertically(JPanel(), 0)
             .panel
 
         updateExcludedPanelState()
 
         return mySettingsComponent!!
+    }
+
+private fun addPinnedFolder() {
+        val descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor()
+        descriptor.title = "Select Folder to Pin"
+        val projectDir = project.basePath?.let { com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(it) }
+        
+        FileChooser.chooseFile(descriptor, project, projectDir) { selectedFile ->
+            val basePath = project.basePath ?: return@chooseFile
+            val selectedPath = selectedFile.path
+
+            if (selectedPath.startsWith(basePath)) {
+                var relativePath = selectedPath.removePrefix(basePath).removePrefix("/")
+                if (relativePath.isNotEmpty() && !relativePath.endsWith("/")) {
+                    relativePath += "/"
+                }
+
+                if (relativePath.isNotEmpty()) {
+                    val validPath = PathValidator.validatePath(basePath, relativePath)
+                    if (validPath != null) {
+                        val description = generateDefaultDescription(relativePath)
+                        val newItem = PinnedFolderItem(relativePath, description)
+                        pinnedTableModel?.insertRow(0, newItem)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun generateDefaultDescription(path: String): String {
+        val segments = path.trimEnd('/').split("/")
+        if (segments.isEmpty()) return "Folder"
+        val last = segments.last()
+        val existingDescriptions = pinnedTableModel?.items?.map { it.description }?.toSet() ?: emptySet()
+        if (!existingDescriptions.contains(last)) return last
+        if (segments.size > 1) {
+            val secondLast = segments[segments.size - 2]
+            return "$secondLast/$last"
+        }
+        return last
+    }
+
+    private fun removePinnedFolder() {
+        val index = pinnedTable?.selectedRow ?: return
+        if (index >= 0) {
+            pinnedTableModel?.removeRow(index)
+        }
+    }
+
+    private fun movePinnedUp() {
+        val index = pinnedTable?.selectedRow ?: return
+        if (index > 0) {
+            pinnedTableModel?.exchangeRows(index, index - 1)
+            pinnedTable?.setRowSelectionInterval(index - 1, index - 1)
+        }
+    }
+
+    private fun movePinnedDown() {
+        val index = pinnedTable?.selectedRow ?: return
+        if (index < (pinnedTableModel?.rowCount ?: 0) - 1) {
+            pinnedTableModel?.exchangeRows(index, index + 1)
+            pinnedTable?.setRowSelectionInterval(index + 1, index + 1)
+        }
     }
 
     private fun addPath() {
@@ -262,11 +410,19 @@ class StickyProjectConfigurable(
     override fun isModified(): Boolean {
         val settings = StickyProjectSettings.instance
         val projectSettings = StickyProjectProjectSettings.getInstance(project)
+        val pinnedSettings = PinnedFoldersSettings.getInstance(project)
+        val currentItems = pinnedTableModel?.items ?: emptyList()
+        val pinnedModified = currentItems.size != pinnedSettings.state.pinnedFolders.size ||
+            currentItems.zip(pinnedSettings.state.pinnedFolders).any { (current, saved) ->
+                current.path != saved.path || current.description != saved.description
+            }
+
         return maxStickyLimitSpinner?.number != settings.state.maxStickyLimit ||
             autoCollapseEnabledCheckbox?.isSelected != settings.state.autoCollapseEnabled ||
             avoidTransparentScrollbarOverlapCheckbox?.isSelected != settings.state.avoidTransparentScrollbarOverlap ||
             autoCollapseIncludeExcludedCheckbox?.isSelected != projectSettings.state.autoCollapseIncludeExcluded ||
-            getPathsFromModel() != settings.state.autoCollapsePathsList
+            getPathsFromModel() != settings.state.autoCollapsePathsList ||
+            pinnedModified
     }
 
     override fun apply() {
@@ -277,6 +433,9 @@ class StickyProjectConfigurable(
         settings.state.avoidTransparentScrollbarOverlap = avoidTransparentScrollbarOverlapCheckbox?.isSelected ?: false
         projectSettings.state.autoCollapseIncludeExcluded = autoCollapseIncludeExcludedCheckbox?.isSelected ?: false
         settings.state.autoCollapsePathsList = getPathsFromModel().toMutableList()
+
+        val pinnedSettings = PinnedFoldersSettings.getInstance(project)
+        pinnedSettings.state.pinnedFolders = pinnedTableModel?.items?.map { it.copy() }?.toMutableList() ?: mutableListOf()
     }
 
     override fun reset() {
@@ -289,6 +448,9 @@ class StickyProjectConfigurable(
         setPathsToModel(settings.state.autoCollapsePathsList)
         updateExcludedPathsModel()
         updateExcludedPanelState()
+
+        val pinnedSettings = PinnedFoldersSettings.getInstance(project)
+        pinnedTableModel?.items = pinnedSettings.state.pinnedFolders.map { it.copy() }.toMutableList()
     }
 
     override fun disposeUIResources() {
@@ -296,13 +458,16 @@ class StickyProjectConfigurable(
         maxStickyLimitSpinner = null
         autoCollapseEnabledCheckbox = null
         autoCollapseIncludeExcludedCheckbox = null
+        avoidTransparentScrollbarOverlapCheckbox = null
         pathsListModel = null
         pathsList = null
         excludedPathsListModel = null
         excludedPathsList = null
         excludedListPanel = null
         excludedReadOnlyLabel = null
-        avoidTransparentScrollbarOverlapCheckbox = null
+        pinnedTableModel = null
+        pinnedTable = null
+        pinnedPanel = null
     }
 
     private inner class PathListCellRenderer(
