@@ -5,6 +5,8 @@ Sticky Project Folder and auto collapse plugin for JetBrains IDEs.
 
 Keeps parent directories visible at the top of the Project View when scrolling.
 
+Includes **Pinned Folders**: pin important directories to a footer at the bottom of the Project View and jump to them with one click. You can also customize their order and descriptions in Settings.
+
 Automatically collapses configured directories (e.g., `node_modules`, `vendor`, `build`, `dist`) in the Project View whenever you navigate to a file outside of them, keeping the tree clean and uncluttered.
 
 ### Features
@@ -13,6 +15,7 @@ Automatically collapses configured directories (e.g., `node_modules`, `vendor`, 
 - Configurable limit for sticky headers (default: 10)
 - Auto-collapse directories when selecting files outside configured paths
 - Drag and drop support on sticky headers
+- **Pinned folders**: Pin frequently-used directories to a footer at the bottom of the Project View for quick one-click navigation (per-project setting). Order and descriptions are configurable.
 
 ### Configuration
 Go to **Settings/Preferences | Tools | Sticky Project Folder** to configure:
@@ -23,7 +26,10 @@ Go to **Settings/Preferences | Tools | Sticky Project Folder** to configure:
 
 ### Preview
 ![Sticky scroll preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/sticky-scroll.gif)
-![Sticky collapse preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/sticky-collapse.gif)
+
+![Sticky collapse preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/auto-collapse.gif)
+
+![Pinned folders preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/pinned-folders.gif)
 
 <!-- Plugin description end -->
 
