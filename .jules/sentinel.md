@@ -6,3 +6,7 @@
 **Vulnerability:** A duplicate vulnerable class `PathValidator.kt` existed in the `settings` package, using simple string concatenation and `Path.startsWith` logic that wasn't as robust against Path Traversal as the centralized utility.
 **Learning:** Having multiple utility classes doing the same thing leads to inconsistencies and potential vulnerabilities where outdated or incorrect logic is used.
 **Prevention:** Centralize security utilities like `PathValidator` in a single location (`util` package) and ensure all call sites use the secure version. Delete deprecated or redundant vulnerable classes.
+## 2025-05-25 - Log Injection via Unsanitized Input
+**Vulnerability:** Unsanitized user inputs (`relativePath` and `targetPath`) were logged directly via `LOG.warn(...)` in `PathValidator.kt`, causing Log Injection / Log Forging (CWE-117) via `\r` and `\n` characters.
+**Learning:** Even diagnostic utilities designed to prevent other vulnerabilities (like Path Traversal) can introduce secondary risks if they log error contexts unsafely.
+**Prevention:** Always sanitize parameters written to standard application logs using an internal helper function (e.g., stripping or replacing line break characters).

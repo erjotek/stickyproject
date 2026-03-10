@@ -6,6 +6,10 @@ import java.nio.file.Paths
 object PathValidator {
     private val LOG = Logger.getInstance(PathValidator::class.java)
 
+    private fun sanitizeForLog(input: String): String {
+        return input.replace('\n', '_').replace('\r', '_')
+    }
+
     /**
      * Validates that the relative path, when resolved against the base path,
      * stays within the base path directory.
@@ -24,10 +28,10 @@ object PathValidator {
             if (resolved.startsWith(base)) {
                 return resolved.toString().replace('\\', '/')
             } else {
-                LOG.warn("Path traversal detected: '$relativePath' attempts to escape '$basePath'")
+                LOG.warn("Path traversal detected: '${sanitizeForLog(relativePath)}' attempts to escape '${sanitizeForLog(basePath)}'")
             }
         } catch (e: Exception) {
-            LOG.warn("Invalid path: '$relativePath' relative to '$basePath'", e)
+            LOG.warn("Invalid path: '${sanitizeForLog(relativePath)}' relative to '${sanitizeForLog(basePath)}'", e)
         }
         return null
     }
@@ -51,10 +55,10 @@ object PathValidator {
                 val relative = base.relativize(target).toString().replace('\\', '/')
                 return relative
             } else {
-                LOG.warn("Path traversal detected: '$targetPath' is not inside '$basePath'")
+                LOG.warn("Path traversal detected: '${sanitizeForLog(targetPath)}' is not inside '${sanitizeForLog(basePath)}'")
             }
         } catch (e: Exception) {
-            LOG.warn("Invalid path: '$targetPath' relative to '$basePath'", e)
+            LOG.warn("Invalid path: '${sanitizeForLog(targetPath)}' relative to '${sanitizeForLog(basePath)}'", e)
         }
         return null
     }
