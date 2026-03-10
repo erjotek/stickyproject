@@ -253,7 +253,7 @@ class StickyHeaderComponent(
         LOG.info("Target directory found")
 
         val transferable = e.transferable
-        LOG.info("Available flavors: ${transferable.transferDataFlavors.map { it.mimeType }}")
+        LOG.info("Available flavors: ${transferable.transferDataFlavors.map { it.mimeType.replace('\n', '_').replace('\r', '_') }}")
 
         val psiElements = ReadAction.compute<Array<PsiElement>, Nothing> {
             extractPsiElementsFromTransferable(transferable)
@@ -351,7 +351,7 @@ class StickyHeaderComponent(
                 if (e is java.awt.datatransfer.UnsupportedFlavorException || e is java.io.IOException) {
                     continue
                 } else {
-                    LOG.error("Failed to get transfer data for flavor ${flavor.mimeType}", e)
+                    LOG.error("Failed to get transfer data for flavor ${flavor.mimeType.replace('\n', '_').replace('\r', '_')}", e)
                     continue
                 }
             }

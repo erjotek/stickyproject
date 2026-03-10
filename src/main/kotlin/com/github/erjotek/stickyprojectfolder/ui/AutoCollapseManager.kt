@@ -290,7 +290,7 @@ class AutoCollapseManager(
         val treePath = findExpandedTreePathForDirectory(absolutePath, rootPath)
 
         if (treePath != null && tree.isExpanded(treePath)) {
-            LOG.info("Collapsing: $relativePath")
+            LOG.info("Collapsing: ${relativePath.replace('\n', '_').replace('\r', '_')}")
             tree.collapsePath(treePath)
             return true
         }
