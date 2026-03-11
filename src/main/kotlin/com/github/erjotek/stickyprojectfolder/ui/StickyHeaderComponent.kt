@@ -33,6 +33,7 @@ import javax.swing.*
 import javax.swing.event.TreeModelEvent
 import javax.swing.tree.DefaultMutableTreeNode
 import com.github.erjotek.stickyprojectfolder.util.StickyScrollUtil
+import com.github.erjotek.stickyprojectfolder.util.PathValidator.sanitizeForLog
 import javax.swing.tree.TreePath
 
 private val LOG = Logger.getInstance(StickyHeaderComponent::class.java)
@@ -334,7 +335,7 @@ class StickyHeaderComponent(
                 if (e is java.awt.datatransfer.UnsupportedFlavorException || e is java.io.IOException) {
                     continue
                 } else {
-                    LOG.error("Failed to get transfer data for flavor ${flavor.mimeType}", e)
+                    LOG.error("Failed to get transfer data for flavor ${sanitizeForLog(flavor.mimeType)}", e)
                     continue
                 }
             }
