@@ -6,7 +6,7 @@ import java.nio.file.Paths
 object PathValidator {
     private val LOG = Logger.getInstance(PathValidator::class.java)
 
-    private fun sanitizeForLog(input: String): String {
+    fun sanitizeForLog(input: String): String {
         return input.replace('\n', '_').replace('\r', '_')
     }
 
@@ -27,7 +27,7 @@ object PathValidator {
 
             // Check for forbidden characters
             if (FORBIDDEN_CHARS.any { c -> relativePath.contains(c) }) {
-                LOG.warn("Path contains forbidden characters: '$relativePath'")
+                LOG.warn("Path contains forbidden characters: '${sanitizeForLog(relativePath)}'")
                 return null
             }
 

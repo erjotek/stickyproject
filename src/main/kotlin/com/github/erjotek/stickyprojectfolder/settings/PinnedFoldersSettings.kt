@@ -8,6 +8,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.util.xmlb.annotations.Tag
 import com.intellij.util.xmlb.annotations.XCollection
+import com.github.erjotek.stickyprojectfolder.util.PathValidator.sanitizeForLog
 
 @State(
     name = "PinnedFoldersSettings",
@@ -51,7 +52,7 @@ class PinnedFoldersSettings : PersistentStateComponent<PinnedFoldersSettings.Sta
 
             // Pinned folder paths must be relative to the project root, never absolute
             if (path.startsWith("/") || path.startsWith("\\") || (path.length >= 2 && path[1] == ':')) {
-                LOG.warn("Rejecting absolute pinned folder path: '$path'")
+                LOG.warn("Rejecting absolute pinned folder path: '${sanitizeForLog(path)}'")
                 return false
             }
 
@@ -59,13 +60,13 @@ class PinnedFoldersSettings : PersistentStateComponent<PinnedFoldersSettings.Sta
             val normalized = path.replace('\\', '/')
             val segments = normalized.split('/')
             if (segments.any { it == ".." }) {
-                LOG.warn("Rejecting pinned folder path with traversal: '$path'")
+                LOG.warn("Rejecting pinned folder path with traversal: '${sanitizeForLog(path)}'")
                 return false
             }
 
             // Check for forbidden characters
             if (FORBIDDEN_CHARS.any { c -> path.contains(c) }) {
-                LOG.warn("Rejecting pinned folder path with forbidden characters: '$path'")
+                LOG.warn("Rejecting pinned folder path with forbidden characters: '${sanitizeForLog(path)}'")
                 return false
             }
 
