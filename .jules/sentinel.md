@@ -2,3 +2,7 @@
 **Vulnerability:** Several logs (`StickyHeaderComponent.kt` tracking mimeTypes, `PinnedFoldersSettings.kt` and `PathValidator.kt` tracking file paths) logged external or user inputs directly via String template injection without sanitizing CRLF `\n` and `\r` characters.
 **Learning:** Even internal settings, file paths, and MIME types coming from system clipboards can be tampered with by an attacker to forge log entries or obscure traces.
 **Prevention:** Always use the `PathValidator.sanitizeForLog()` utility function when passing external, user-supplied, or potentially tampered strings to `LOG.warn`, `LOG.error`, or `LOG.info`.
+## 2024-05-31 - Fix HTML Injection in PinnedFolders Settings JTable
+**Vulnerability:** A custom `DefaultTableCellRenderer` was implemented in `StickyProjectConfigurable.kt` for `pinnedTable` without explicitly disabling HTML rendering. An attacker (or a simple malicious path/description) could exploit the default Java Swing behaviour where `JLabel` (and its subclasses) interpret text starting with `<html>` as HTML, allowing UI spoofing or minor HTML injection in the IDE settings panel.
+**Learning:** Default cell renderers in Swing for JetBrains plugins are highly susceptible to HTML injection unless explicitly handled, because users can control file/folder paths and descriptions.
+**Prevention:** Always cast custom render components to `JComponent` (or apply at component creation) and invoke `.putClientProperty("html.disable", true)` when displaying any user-controlled inputs in Swing UI elements (like `JTable`, `JBList`, etc).

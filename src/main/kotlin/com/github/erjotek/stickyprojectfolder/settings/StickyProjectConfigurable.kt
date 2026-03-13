@@ -187,6 +187,12 @@ class StickyProjectConfigurable(
                 table: javax.swing.JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
             ): Component {
                 val comp = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+
+                // Prevent HTML injection in JTable cells
+                if (comp is JComponent) {
+                    comp.putClientProperty("html.disable", true)
+                }
+
                 if (!isSelected) {
                     val item = pinnedTableModel?.items?.getOrNull(row)
                     if (item != null) {
