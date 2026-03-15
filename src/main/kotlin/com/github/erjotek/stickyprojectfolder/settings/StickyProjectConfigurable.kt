@@ -183,6 +183,10 @@ class StickyProjectConfigurable(
 
         // Custom renderer: gray out non-existent paths (both path and description columns)
         pinnedTable!!.setDefaultRenderer(Any::class.java, object : javax.swing.table.DefaultTableCellRenderer() {
+            init {
+                putClientProperty("html.disable", true)
+            }
+
             override fun getTableCellRendererComponent(
                 table: javax.swing.JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
             ): Component {
