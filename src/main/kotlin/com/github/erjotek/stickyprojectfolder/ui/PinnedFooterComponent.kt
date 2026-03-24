@@ -156,7 +156,7 @@ class PinnedFooterComponent(
                         colorManager.getFileColor(virtualFile)
                     } else null
                 } catch (e: Exception) {
-                    LOG.warn("Failed to get file color for ${item.path}", e)
+                    LOG.warn("Failed to get file color for ${com.github.erjotek.stickyprojectfolder.util.PathValidator.sanitizeForLog(item.path)}", e)
                     null
                 }
             }
