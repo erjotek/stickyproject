@@ -251,8 +251,9 @@ private fun addPinnedFolder() {
             val basePath = project.basePath ?: return@chooseFile
             val selectedPath = selectedFile.path
 
-            if (selectedPath.startsWith(basePath)) {
-                var relativePath = selectedPath.removePrefix(basePath).removePrefix("/")
+            val validatedRelative = PathValidator.getValidatedRelativePath(basePath, selectedPath)
+            if (validatedRelative != null) {
+                var relativePath = validatedRelative
                 if (relativePath.isNotEmpty() && !relativePath.endsWith("/")) {
                     relativePath += "/"
                 }
