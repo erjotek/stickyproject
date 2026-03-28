@@ -557,12 +557,12 @@ class StickyHeaderComponent(
             tree.getRowBounds(probeRow) ?: break
             
             // Build list of parent containers for this row (from root to current)
-            val candidates = mutableListOf<TreePath>()
+            val candidates = ArrayDeque<TreePath>()
             var ptr: TreePath? = probePath
             while (ptr != null) {
                 val node = ptr.lastPathComponent
                 if (isContainerNode(node)) {
-                    candidates.add(0, ptr) // Add at beginning to get root-first order
+                    candidates.addFirst(ptr) // Add at beginning to get root-first order
                 }
                 ptr = ptr.parentPath
             }
