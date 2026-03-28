@@ -187,7 +187,6 @@ class StickyProjectConfigurable(
                 table: javax.swing.JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
             ): Component {
                 val comp = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
-                (comp as? javax.swing.JComponent)?.putClientProperty("html.disable", true)
                 if (!isSelected) {
                     val item = pinnedTableModel?.items?.getOrNull(row)
                     if (item != null) {
@@ -247,7 +246,7 @@ private fun addPinnedFolder() {
         val descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor()
         descriptor.title = "Select Folder to Pin"
         val projectDir = project.basePath?.let { com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(it) }
-        
+
         FileChooser.chooseFile(descriptor, project, projectDir) { selectedFile ->
             val basePath = project.basePath ?: return@chooseFile
             val selectedPath = selectedFile.path

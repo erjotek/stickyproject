@@ -1,0 +1,8 @@
+--- src/main/kotlin/com/github/erjotek/stickyprojectfolder/settings/StickyProjectConfigurable.kt
++++ src/main/kotlin/com/github/erjotek/stickyprojectfolder/settings/StickyProjectConfigurable.kt
+@@ -188,6 +188,7 @@
+             ): Component {
+                 val comp = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
++                (comp as? javax.swing.JComponent)?.putClientProperty("html.disable", true)
+                 if (!isSelected) {
+                     val item = pinnedTableModel?.items?.getOrNull(row)
