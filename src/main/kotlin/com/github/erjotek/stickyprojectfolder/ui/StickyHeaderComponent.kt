@@ -344,20 +344,24 @@ class StickyHeaderComponent(
 
             when (data) {
                 is Array<*> -> {
-                    data.filterIsInstance<VirtualFile>().forEach { vf ->
-                        val psi = resolvePsiElement(vf)
-                        if (psi != null) elements.add(psi)
+                    for (item in data) {
+                        if (item is VirtualFile) {
+                            val psi = resolvePsiElement(item)
+                            if (psi != null) elements.add(psi)
+                        } else if (item is PsiElement) {
+                            elements.add(item)
+                        }
                     }
-
-                    data.filterIsInstance<PsiElement>().forEach { elements.add(it) }
                 }
                 is Collection<*> -> {
-                    data.filterIsInstance<VirtualFile>().forEach { vf ->
-                        val psi = resolvePsiElement(vf)
-                        if (psi != null) elements.add(psi)
+                    for (item in data) {
+                        if (item is VirtualFile) {
+                            val psi = resolvePsiElement(item)
+                            if (psi != null) elements.add(psi)
+                        } else if (item is PsiElement) {
+                            elements.add(item)
+                        }
                     }
-
-                    data.filterIsInstance<PsiElement>().forEach { elements.add(it) }
                 }
             }
         }
