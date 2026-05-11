@@ -5,7 +5,7 @@ import com.intellij.ide.projectView.ProjectView
 import com.intellij.ide.projectView.impl.AbstractProjectViewPane
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.util.Computable
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -249,9 +249,9 @@ class PinnedFoldersManager(private val project: Project) : Disposable {
         tryInstall()
 
         val currentTree = tree ?: return
-        val psiDir = ReadAction.compute<com.intellij.psi.PsiDirectory?, RuntimeException> {
+        val psiDir = ApplicationManager.getApplication().runReadAction(Computable {
             PsiManager.getInstance(project).findDirectory(file)
-        } ?: return
+        }) ?: return
         
         val projectView = ProjectView.getInstance(project)
         
@@ -265,10 +265,10 @@ class PinnedFoldersManager(private val project: Project) : Disposable {
         // Step 2: Select the folder (this will expand parents and scroll)
         // ProjectView.select() internally creates SmartPsiElementPointer which requires read access.
         // requestFocus=true ensures the tree accepts the selection reliably.
-        ReadAction.run<RuntimeException> {
+        ApplicationManager.getApplication().runReadAction(Runnable {
             projectView.select(psiDir, file, true)
-        }
-        
+        })
+
         // Step 3: Wait for tree to stabilize, then scroll to precise position.
         // Selection/expansion can be async, so retry a few times.
         scheduleScrollRetry(projectView, psiDir, currentTree, file, attemptsLeft = 6)
@@ -306,9 +306,9 @@ class PinnedFoldersManager(private val project: Project) : Disposable {
                     schedulePostNavigationCollapse(tree, 200)
                 } else {
                     // Re-issue selection in case the first select was ignored during async tree rebuild.
-                    ReadAction.run<RuntimeException> {
+                    ApplicationManager.getApplication().runReadAction(Runnable {
                         projectView.select(psiDir, file, true)
-                    }
+                    })
                     scheduleScrollRetry(projectView, psiDir, tree, file, attemptsLeft = attemptsLeft - 1)
                 }
             }, project.disposed)

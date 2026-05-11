@@ -5,7 +5,7 @@ import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.util.treeView.AbstractTreeNode
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.util.Computable
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
@@ -225,9 +225,9 @@ class StickyHeaderComponent(
             return
         }
 
-        val targetDir = com.intellij.openapi.application.runReadAction {
+        val targetDir = ApplicationManager.getApplication().runReadAction(Computable {
             getTargetDirectoryAt(e.location.y)
-        }
+        })
         if (targetDir == null) {
             LOG.info("Drop rejected - no target directory at y=${e.location.y}")
             e.rejectDrop()
@@ -239,9 +239,9 @@ class StickyHeaderComponent(
         val transferable = e.transferable
         LOG.info("Available flavors: ${transferable.transferDataFlavors.map { it.mimeType }}")
 
-        val psiElements = com.intellij.openapi.application.runReadAction {
+        val psiElements = ApplicationManager.getApplication().runReadAction(Computable {
             extractPsiElementsFromTransferable(transferable)
-        }
+        })
 
         if (psiElements.isEmpty()) {
             LOG.info("Drop rejected - no supported transferable data")
@@ -438,9 +438,9 @@ class StickyHeaderComponent(
             if (!virtualFileLoading.contains(node)) {
                 virtualFileLoading.add(node)
                 backgroundExecutor.execute {
-                    val vf = com.intellij.openapi.application.runReadAction {
+                    val vf = ApplicationManager.getApplication().runReadAction(Computable {
                         extractVirtualFileFromNode(node)
-                    }
+                    })
 
                     synchronized(virtualFileCacheLock) {
                         virtualFileCache[node] = vf
@@ -468,10 +468,10 @@ class StickyHeaderComponent(
         LOG.info("moveFilesToDirectory called: ${files.size} files")
 
         val psiElements = files.mapNotNull { file ->
-            com.intellij.openapi.application.runReadAction {
+            ApplicationManager.getApplication().runReadAction(Computable {
                 val vf = com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByIoFile(file)
                 if (vf != null) resolvePsiElement(vf) else null
-            }
+            })
         }.toTypedArray()
 
         LOG.info("Found ${psiElements.size} PSI elements to move")
@@ -768,7 +768,7 @@ class StickyHeaderComponent(
                     if (!colorLoading.contains(cacheKey)) {
                         colorLoading.add(cacheKey)
                         backgroundExecutor.execute {
-                            val color = com.intellij.openapi.application.runReadAction {
+                            val color = ApplicationManager.getApplication().runReadAction(Computable {
                                 try {
                                     val colorManager = FileColorManager.getInstance(project)
                                     if (colorManager.isEnabled && colorManager.isEnabledForProjectView) {
@@ -779,7 +779,7 @@ class StickyHeaderComponent(
                                 } catch (e: Exception) {
                                     null
                                 }
-                            }
+                            })
                             synchronized(virtualFileCacheLock) {
                                 colorCache[cacheKey] = color
                                 colorLoading.remove(cacheKey)
@@ -820,8 +820,5 @@ class StickyHeaderComponent(
 
         g2.translate(-indent, -yPos)
         g2.clip = oldClip
-
-        g2.color = JBColor.border()
-        g2.drawLine(0, yPos + rowHeight - 1, width, yPos + rowHeight - 1)
     }
 }

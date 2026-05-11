@@ -1,0 +1,8 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <breadcrumbsInfoProvider
+            id="stickyProjectFolder.kotlinBreadcrumbs"
+            implementation="com.github.erjotek.stickyprojectfolder.editor.KotlinStickyBreadcrumbsProvider"
+            order="first"/>
+    </extensions>
+</idea-plugin>

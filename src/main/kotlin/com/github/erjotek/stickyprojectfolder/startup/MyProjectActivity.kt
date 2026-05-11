@@ -11,7 +11,7 @@ class MyProjectActivity : ProjectActivity {
         thisLogger().info("Installing StickyProjectFolder manager")
         val manager = StickyScrollManager(project)
         com.intellij.openapi.util.Disposer.register(project, manager)
-        
+
         val pinnedManager = com.github.erjotek.stickyprojectfolder.pinned.PinnedFoldersManager(project)
         com.intellij.openapi.util.Disposer.register(project, pinnedManager)
     }

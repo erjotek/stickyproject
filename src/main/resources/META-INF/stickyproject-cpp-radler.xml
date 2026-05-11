@@ -1,0 +1,8 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <breadcrumbsInfoProvider
+            id="stickyProjectFolder.cppRadlerBreadcrumbs"
+            implementation="com.github.erjotek.stickyprojectfolder.editor.CppStickyBreadcrumbsProvider"
+            order="first"/>
+    </extensions>
+</idea-plugin>

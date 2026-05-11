@@ -7,6 +7,14 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.lang</depends>
 
+    <depends optional="true" config-file="stickyproject-php.xml">com.jetbrains.php</depends>
+    <depends optional="true" config-file="stickyproject-js.xml">JavaScript</depends>
+    <depends optional="true" config-file="stickyproject-java.xml">com.intellij.java</depends>
+    <depends optional="true" config-file="stickyproject-cpp.xml">com.intellij.clion</depends>
+    <depends optional="true" config-file="stickyproject-cpp-radler.xml">org.jetbrains.plugins.clion.radler</depends>
+    <depends optional="true" config-file="stickyproject-python.xml">com.intellij.modules.python</depends>
+    <depends optional="true" config-file="stickyproject-kotlin.xml">org.jetbrains.kotlin</depends>
+
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
@@ -17,6 +25,10 @@
                              id="com.github.erjotek.stickyprojectfolder.settings.StickyProjectConfigurable"
                              displayName="Sticky Project Folder"/>
         <projectService serviceImplementation="com.github.erjotek.stickyprojectfolder.settings.PinnedFoldersSettings"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK2="true"/>
     </extensions>
 
     <actions>

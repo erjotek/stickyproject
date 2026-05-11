@@ -1,28 +1,43 @@
 # Sticky Project Folder Plugin
 
 <!-- Plugin description -->
-Sticky Project Folder and auto collapse plugin for JetBrains IDEs.
+Sticky scrolling, auto-collapse and pinned folders for JetBrains IDEs.
 
-Keeps parent directories visible at the top of the Project View when scrolling.
-
-Includes **Pinned Folders**: pin important directories to a footer at the bottom of the Project View and jump to them with one click. You can also customize their order and descriptions in Settings.
-
-Automatically collapses configured directories (e.g., `node_modules`, `vendor`, `build`, `dist`) in the Project View whenever you navigate to a file outside of them, keeping the tree clean and uncluttered.
+The plugin keeps important context visible while you navigate code — both in the **Project View** and in the **Editor** — and helps keep the project tree clean while putting frequently-used directories one click away.
 
 ### Features
-- Sticky headers for directories in Project View
-- Respects file color scopes (Background colors)
-- Configurable limit for sticky headers (default: 10)
-- Auto-collapse directories when selecting files outside configured paths
-- Drag and drop support on sticky headers
-- **Pinned folders**: Pin frequently-used directories to a footer at the bottom of the Project View for quick one-click navigation (per-project setting). Order and descriptions are configurable.
+
+The plugin bundles **four independent features** that can be enabled and tuned separately:
+
+1. **Sticky Project View** — keeps parent directories pinned at the top of the Project View as you scroll, so you always know where you are in the tree.
+   - Respects file color scopes (background colors)
+   - Configurable maximum number of sticky headers (default: 10)
+   - Drag-and-drop support on sticky headers
+
+2. **Sticky Editor lines (extended)** — extends the IDE's built-in sticky-lines / breadcrumbs feature beyond classes and functions to also stick **control-flow blocks**:
+   - `if` / `else if` / `else`
+   - `for`, `foreach`, `while`, `do…while`
+   - `switch` / `when`
+   - `try` / `catch` / `finally`
+   - PHP / JS array and object literals
+   
+   Supported languages: **Java, Kotlin, PHP, JavaScript / TypeScript, Python, C / C++**. Sticky control blocks and array-scope sticking can be toggled independently in Settings.
+
+3. **Auto-collapse directories** — automatically collapses configured directories (e.g. `node_modules`, `vendor`, `build`, `dist`) in the Project View whenever you navigate to a file outside of them, keeping the tree tidy without manual clean-up.
+   - Global list of directories to collapse
+   - Per-project excluded directories
+
+4. **Pinned Folders** — pin frequently-used directories to a footer at the bottom of the Project View and jump to them with one click. Order and per-folder descriptions are customizable. Stored per project.
 
 ### Configuration
 Go to **Settings/Preferences | Tools | Sticky Project Folder** to configure:
-- Maximum number of sticky headers
-- Enable/disable auto-collapse feature
-- Add/remove directories for auto-collapse (e.g., `node_modules/`, `vendor/`) - global setting
-- Auto-collapse excluded directories - per-project setting
+- Maximum number of sticky headers in the Project View
+- Sticky lines for control blocks (`if` / `for` / `foreach` / `switch` / `while` / `try`, …)
+- Sticky lines for PHP / JS array and object literals
+- Enable / disable the auto-collapse feature
+- Add / remove directories for auto-collapse (e.g. `node_modules/`, `vendor/`) — global setting
+- Auto-collapse excluded directories — per-project setting
+- Manage pinned folders, their order and descriptions — per-project setting
 
 ### Preview
 ![Sticky scroll preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/sticky-scroll.gif)
