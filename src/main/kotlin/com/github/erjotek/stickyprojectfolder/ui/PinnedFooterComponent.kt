@@ -16,7 +16,7 @@ import java.awt.event.MouseEvent
 import java.io.File
 import javax.swing.JComponent
 import javax.swing.JTree
-import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.util.Computable
 import com.intellij.ui.FileColorManager
 import com.intellij.ui.ColorUtil
 import com.github.erjotek.stickyprojectfolder.settings.StickyProjectSettings
@@ -149,7 +149,7 @@ class PinnedFooterComponent(
             val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file)
                 ?: return@mapNotNull null
 
-            val fileColor = runReadAction {
+            val fileColor = ApplicationManager.getApplication().runReadAction(Computable {
                 try {
                     val colorManager = FileColorManager.getInstance(project)
                     if (colorManager.isEnabled && colorManager.isEnabledForProjectView) {
@@ -159,7 +159,7 @@ class PinnedFooterComponent(
                     LOG.warn("Failed to get file color for ${item.path}", e)
                     null
                 }
-            }
+            })
             PinnedItemRenderData(item, virtualFile, fileColor)
         }
 
@@ -251,18 +251,18 @@ class PinnedFooterComponent(
             return
         }
         val data = pinnedItems[idx]
-        val targetDir = runReadAction {
+        val targetDir = ApplicationManager.getApplication().runReadAction(Computable {
             PsiManager.getInstance(project).findDirectory(data.virtualFile)
-        }
+        })
         if (targetDir == null) {
             e.rejectDrop()
             return
         }
 
         val transferable = e.transferable
-        val psiElements = runReadAction {
+        val psiElements = ApplicationManager.getApplication().runReadAction(Computable {
             extractPsiElements(transferable)
-        }
+        })
 
         if (psiElements.isEmpty()) {
             e.rejectDrop()

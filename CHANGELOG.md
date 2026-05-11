@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+## [1.2.6] - 2026-05-11
+
+### Added
+
+- **Sticky Editor lines (experimental)** — extends the IDE's built-in sticky-lines / breadcrumbs feature beyond classes and functions to also stick **control-flow blocks**: `if` / `else if` / `else`, `for`, `foreach`, `while`, `do…while`, `switch` / `when`, `try` / `catch` / `finally`, and PHP / JS array and object literals. Supported languages: **Java, Kotlin, PHP, JavaScript / TypeScript, Python, C / C++**.
+- New settings to toggle sticky lines for control blocks and for PHP/JS array & object literals independently.
+
+### Changed
+
+- Performance improvements across sticky rendering and PSI classification: cached element-kind lookups and reflection method handles, reducing work on large files and on every breadcrumbs/sticky-lines refresh.
+
+### Removed
+
+- Removed per-folder divider lines in the Project View sticky area for a cleaner, more compact look.
+- Removed remaining deprecated IntelliJ Platform API usages and replaced them with the current recommended APIs.
+
 ## [1.0.3] - 2026-03-10
 
 ### Added
@@ -101,7 +117,8 @@
 - Added ability to set limits.
 - Added clickable sticky elements.
 
-[Unreleased]: https://github.com/erjotek/stickyproject/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/erjotek/stickyproject/compare/v1.2.6...HEAD
+[1.2.6]: https://github.com/erjotek/stickyproject/compare/v1.0.3...v1.2.6
 [1.0.3]: https://github.com/erjotek/stickyproject/compare/v0.9.17...v1.0.3
 [0.9.17]: https://github.com/erjotek/stickyproject/compare/v0.9.12...v0.9.17
 [0.9.12]: https://github.com/erjotek/stickyproject/compare/v0.9.6...v0.9.12

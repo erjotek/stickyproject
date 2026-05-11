@@ -1,5 +1,9 @@
 package com.github.erjotek.stickyprojectfolder.settings
 
+import com.intellij.icons.AllIcons
+import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.openapi.editor.ex.EditorSettingsExternalizable
+import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.fileChooser.FileChooser
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
@@ -51,6 +55,8 @@ class StickyProjectConfigurable(
     private var pinnedTable: JBTable? = null
     private var pinnedPanel: JPanel? = null
     private var avoidTransparentScrollbarOverlapCheckbox: JBCheckBox? = null
+    private var stickyControlBlocksCheckbox: JBCheckBox? = null
+    private var stickyArrayScopesCheckbox: JBCheckBox? = null
 
     override fun getDisplayName(): String = "Sticky Project"
 
@@ -61,6 +67,8 @@ class StickyProjectConfigurable(
         autoCollapseEnabledCheckbox = JBCheckBox("Enable auto-collapse directories (global settings)")
         autoCollapseIncludeExcludedCheckbox = JBCheckBox("Auto-collapse excluded folders")
         avoidTransparentScrollbarOverlapCheckbox = JBCheckBox("Adjust sticky width for transparent scrollbar")
+        stickyControlBlocksCheckbox = JBCheckBox("Show sticky lines for control blocks (if / for / foreach / switch / while / try)")
+        stickyArrayScopesCheckbox = JBCheckBox("Show sticky lines for PHP/JS array and object literals")
 
         pathsListModel = DefaultListModel<String>()
         pathsList = JBList<String>(pathsListModel!!).apply {
@@ -141,9 +149,46 @@ class StickyProjectConfigurable(
             add(autoCollapseInnerPanel, BorderLayout.CENTER)
         }
 
+        val ideaStickyLinesLimit = try {
+            EditorSettingsExternalizable.getInstance().stickyLineLimit
+        } catch (_: Exception) { -1 }
+        val stickyLinesInfoLabel = JBLabel(buildStickyLinesInfoText(ideaStickyLinesLimit)).apply {
+            font = font.deriveFont(font.size2D * 0.9f)
+            if (ideaStickyLinesLimit in 1..4) {
+                foreground = JBColor.namedColor("Label.warningForeground", JBColor(0x895900, 0xFFD24D))
+            } else {
+                foreground = JBColor.namedColor("Label.infoForeground", JBColor.GRAY)
+            }
+        }
+
+        val controlBlocksRow = buildCheckboxWithTechInfo(
+            stickyControlBlocksCheckbox!!,
+            listOf(
+                "PHP" to "com.jetbrains.php",
+                "JavaScript" to "JavaScript",
+                "TypeScript" to "JavaScript",
+                "Vue" to "org.jetbrains.plugins.vue",
+                "Java" to "com.intellij.java",
+                "Kotlin" to "org.jetbrains.kotlin",
+                "Python" to "Pythonid|PythonCore",
+                "C / C++" to "com.intellij.clion|org.jetbrains.plugins.clion.radler"
+            )
+        )
+        val arrayScopesRow = buildCheckboxWithTechInfo(
+            stickyArrayScopesCheckbox!!,
+            listOf(
+                "PHP" to "com.jetbrains.php",
+                "JavaScript" to "JavaScript",
+                "TypeScript" to "JavaScript"
+            )
+        )
+
         val stickyInnerPanel = FormBuilder.createFormBuilder()
             .addLabeledComponent(JBLabel("Max sticky directories (1-100):"), maxStickyLimitSpinner!!, 1, false)
             .addComponent(avoidTransparentScrollbarOverlapCheckbox!!, JBUI.scale(2))
+            .addComponent(controlBlocksRow, JBUI.scale(2))
+            .addComponent(arrayScopesRow, JBUI.scale(2))
+            .addComponent(stickyLinesInfoLabel, JBUI.scale(2))
             .panel
 
         val stickyFieldset = JPanel(BorderLayout()).apply {
@@ -243,7 +288,47 @@ class StickyProjectConfigurable(
         return mySettingsComponent!!
     }
 
-private fun addPinnedFolder() {
+    private fun buildCheckboxWithTechInfo(
+        checkbox: JBCheckBox,
+        techs: List<Pair<String, String>>
+    ): JPanel {
+        val infoIcon = JBLabel(AllIcons.General.ContextHelp).apply {
+            toolTipText = buildTechStatusTooltip(techs)
+            border = JBUI.Borders.emptyLeft(4)
+        }
+        return JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+            border = JBUI.Borders.empty()
+            add(checkbox)
+            add(infoIcon)
+        }
+    }
+
+    private fun buildTechStatusTooltip(techs: List<Pair<String, String>>): String {
+        val rows = techs.joinToString("") { (name, pluginId) ->
+            val ok = isPluginEnabled(pluginId)
+            val color = if (ok) "#3C8639" else "#C75450"
+            val status = if (ok) "available" else "plugin required"
+            "<tr><td><font color='$color'>●</font></td>" +
+                "<td>&nbsp;<b>$name</b> — $status</td></tr>"
+        }
+        return "<html><table cellpadding='1'>$rows</table></html>"
+    }
+
+    private fun isPluginEnabled(id: String): Boolean =
+        id.split('|').any {
+            val pid = PluginId.getId(it)
+            PluginManagerCore.getPlugin(pid) != null && !PluginManagerCore.isDisabled(pid)
+        }
+
+    private fun buildStickyLinesInfoText(limit: Int): String {
+        val limitInfo = if (limit < 0) "unknown" else "$limit"
+        val warning = if (limit in 1..4)
+            " — warning: this is less than 5, sticky scope lines may not be visible!"
+        else ""
+        return "Number of visible sticky lines depends on the IDE setting: Editor → General → Sticky Lines → Max lines shown (current: $limitInfo)$warning"
+    }
+
+    private fun addPinnedFolder() {
         val descriptor = FileChooserDescriptorFactory.createSingleFolderDescriptor()
         descriptor.title = "Select Folder to Pin"
         val projectDir = project.basePath?.let { com.intellij.openapi.vfs.LocalFileSystem.getInstance().findFileByPath(it) }
@@ -421,6 +506,8 @@ private fun addPinnedFolder() {
         return maxStickyLimitSpinner?.number != settings.state.maxStickyLimit ||
             autoCollapseEnabledCheckbox?.isSelected != settings.state.autoCollapseEnabled ||
             avoidTransparentScrollbarOverlapCheckbox?.isSelected != settings.state.avoidTransparentScrollbarOverlap ||
+            stickyControlBlocksCheckbox?.isSelected != settings.state.stickyControlBlocks ||
+            stickyArrayScopesCheckbox?.isSelected != settings.state.stickyArrayScopes ||
             autoCollapseIncludeExcludedCheckbox?.isSelected != projectSettings.state.autoCollapseIncludeExcluded ||
             getPathsFromModel() != settings.state.autoCollapsePathsList ||
             pinnedModified
@@ -432,11 +519,15 @@ private fun addPinnedFolder() {
         settings.state.maxStickyLimit = maxStickyLimitSpinner?.number ?: 10
         settings.state.autoCollapseEnabled = autoCollapseEnabledCheckbox?.isSelected ?: true
         settings.state.avoidTransparentScrollbarOverlap = avoidTransparentScrollbarOverlapCheckbox?.isSelected ?: false
+        settings.state.stickyControlBlocks = stickyControlBlocksCheckbox?.isSelected ?: true
+        settings.state.stickyArrayScopes = stickyArrayScopesCheckbox?.isSelected ?: true
         projectSettings.state.autoCollapseIncludeExcluded = autoCollapseIncludeExcludedCheckbox?.isSelected ?: false
         settings.state.autoCollapsePathsList = getPathsFromModel().toMutableList()
 
         val pinnedSettings = PinnedFoldersSettings.getInstance(project)
         pinnedSettings.state.pinnedFolders = pinnedTableModel?.items?.map { it.copy() }?.toMutableList() ?: mutableListOf()
+
+        // Sticky control-block / array-scope toggles take effect on next breadcrumbs/sticky-lines refresh.
     }
 
     override fun reset() {
@@ -445,6 +536,8 @@ private fun addPinnedFolder() {
         maxStickyLimitSpinner?.number = settings.state.maxStickyLimit
         autoCollapseEnabledCheckbox?.isSelected = settings.state.autoCollapseEnabled
         avoidTransparentScrollbarOverlapCheckbox?.isSelected = settings.state.avoidTransparentScrollbarOverlap
+        stickyControlBlocksCheckbox?.isSelected = settings.state.stickyControlBlocks
+        stickyArrayScopesCheckbox?.isSelected = settings.state.stickyArrayScopes
         autoCollapseIncludeExcludedCheckbox?.isSelected = projectSettings.state.autoCollapseIncludeExcluded
         setPathsToModel(settings.state.autoCollapsePathsList)
         updateExcludedPathsModel()
@@ -460,6 +553,8 @@ private fun addPinnedFolder() {
         autoCollapseEnabledCheckbox = null
         autoCollapseIncludeExcludedCheckbox = null
         avoidTransparentScrollbarOverlapCheckbox = null
+        stickyControlBlocksCheckbox = null
+        stickyArrayScopesCheckbox = null
         pathsListModel = null
         pathsList = null
         excludedPathsListModel = null
