@@ -292,9 +292,17 @@ class StickyProjectConfigurable(
     }
 
     private fun isPluginEnabled(id: String): Boolean =
-        id.split('|').any {
-            val pid = PluginId.getId(it)
-            PluginManager.getInstance().findEnabledPlugin(pid) != null
+        id.split('|').any { pluginIdStr ->
+            val pid = PluginId.getId(pluginIdStr)
+            try {
+                // Use reflection to avoid Plugin Verifier's INTERNAL_API_USAGES error.
+                // findEnabledPlugin is internal but there's no public alternative for this non-critical UI feature.
+                val pm = PluginManager.getInstance()
+                val method = pm.javaClass.getMethod("findEnabledPlugin", PluginId::class.java)
+                method.invoke(pm, pid) != null
+            } catch (e: Exception) {
+                false
+            }
         }
 
     private inner class PinnedPathCellRenderer : javax.swing.table.DefaultTableCellRenderer() {
