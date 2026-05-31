@@ -35,6 +35,8 @@ import javax.swing.*
 import javax.swing.border.TitledBorder
 import javax.swing.event.ListDataEvent
 import javax.swing.event.ListDataListener
+import javax.swing.event.TableModelEvent
+import javax.swing.event.TableModelListener
 
 class StickyProjectConfigurable(
     private val project: Project
@@ -227,30 +229,7 @@ class StickyProjectConfigurable(
         }
 
         // Custom renderer: gray out non-existent paths (both path and description columns)
-        pinnedTable!!.setDefaultRenderer(Any::class.java, object : javax.swing.table.DefaultTableCellRenderer() {
-            override fun getTableCellRendererComponent(
-                table: javax.swing.JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
-            ): Component {
-                val comp = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
-                (comp as? JComponent)?.putClientProperty("html.disable", true)
-                if (!isSelected) {
-                    val item = pinnedTableModel?.items?.getOrNull(row)
-                    if (item != null) {
-                        val basePath = project.basePath
-                        val pathExists = if (basePath != null) {
-                            PathValidator.validatePath(basePath, item.path) != null &&
-                                File("$basePath/${item.path.trimEnd('/')}").exists()
-                        } else false
-                        foreground = if (pathExists) {
-                            JBColor.namedColor("Label.foreground", JBColor.foreground())
-                        } else {
-                            JBColor.namedColor("Label.disabledForeground", JBColor.GRAY)
-                        }
-                    }
-                }
-                return comp
-            }
-        })
+        pinnedTable!!.setDefaultRenderer(Any::class.java, PinnedPathTableRenderer())
 
         val pinnedToolbar = ToolbarDecorator.createDecorator(pinnedTable!!)
             .setAddAction { addPinnedFolder() }
@@ -566,6 +545,49 @@ class StickyProjectConfigurable(
         pinnedPanel = null
     }
 
+    private inner class PinnedPathTableRenderer : javax.swing.table.DefaultTableCellRenderer() {
+        private var existingPaths: Set<String> = emptySet()
+
+        init {
+            pinnedTableModel?.addTableModelListener {
+                recalculate()
+            }
+            recalculate()
+        }
+
+        private fun recalculate() {
+            val items = pinnedTableModel?.items ?: emptyList()
+            val basePath = project.basePath
+            existingPaths = if (basePath != null) {
+                items.filter { item ->
+                    SecurePathValidator.validatePath(basePath, item.path) != null &&
+                        File("$basePath/${item.path.trimEnd('/')}").exists()
+                }.map { it.path }.toSet()
+            } else {
+                emptySet()
+            }
+        }
+
+        override fun getTableCellRendererComponent(
+            table: javax.swing.JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
+        ): Component {
+            val comp = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+            (comp as? JComponent)?.putClientProperty("html.disable", true)
+            if (!isSelected) {
+                val item = pinnedTableModel?.items?.getOrNull(row)
+                if (item != null) {
+                    val pathExists = existingPaths.contains(item.path)
+                    foreground = if (pathExists) {
+                        JBColor.namedColor("Label.foreground", JBColor.foreground())
+                    } else {
+                        JBColor.namedColor("Label.disabledForeground", JBColor.GRAY)
+                    }
+                }
+            }
+            return comp
+        }
+    }
+
     private inner class PathListCellRenderer(
         private val model: ListModel<String>
     ) : ListCellRenderer<String> {
@@ -574,6 +596,7 @@ class StickyProjectConfigurable(
         }
         private val folderIcon = UIManager.getIcon("FileView.directoryIcon")
         private var nestedPaths: Set<String> = emptySet()
+        private var existingPaths: Set<String> = emptySet()
 
         init {
             model.addListDataListener(object : ListDataListener {
@@ -587,6 +610,15 @@ class StickyProjectConfigurable(
         private fun recalculate() {
             val paths = (0 until model.size).map { model.getElementAt(it) }
             nestedPaths = PathUtils.calculateNestedPaths(paths)
+
+            val basePath = project.basePath
+            existingPaths = if (basePath != null) {
+                paths.filter { path ->
+                    SecurePathValidator.validatePath(basePath, path)?.let { File(it).exists() } ?: false
+                }.toSet()
+            } else {
+                emptySet()
+            }
         }
 
         override fun getListCellRendererComponent(
@@ -600,12 +632,7 @@ class StickyProjectConfigurable(
             label.icon = folderIcon
             label.border = JBUI.Borders.empty(2, 4)
 
-            val basePath = project.basePath
-            val pathExists = if (basePath != null && value != null) {
-                SecurePathValidator.validatePath(basePath, value)?.let { File(it).exists() } ?: false
-            } else {
-                false
-            }
+            val pathExists = value?.let { existingPaths.contains(it) } ?: false
 
             val isNested = value?.let { nestedPaths.contains(it) } == true
 
