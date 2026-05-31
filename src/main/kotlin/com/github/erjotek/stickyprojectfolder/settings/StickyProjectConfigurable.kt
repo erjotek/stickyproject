@@ -227,30 +227,7 @@ class StickyProjectConfigurable(
         }
 
         // Custom renderer: gray out non-existent paths (both path and description columns)
-        pinnedTable!!.setDefaultRenderer(Any::class.java, object : javax.swing.table.DefaultTableCellRenderer() {
-            override fun getTableCellRendererComponent(
-                table: javax.swing.JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
-            ): Component {
-                val comp = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
-                (comp as? JComponent)?.putClientProperty("html.disable", true)
-                if (!isSelected) {
-                    val item = pinnedTableModel?.items?.getOrNull(row)
-                    if (item != null) {
-                        val basePath = project.basePath
-                        val pathExists = if (basePath != null) {
-                            PathValidator.validatePath(basePath, item.path) != null &&
-                                File("$basePath/${item.path.trimEnd('/')}").exists()
-                        } else false
-                        foreground = if (pathExists) {
-                            JBColor.namedColor("Label.foreground", JBColor.foreground())
-                        } else {
-                            JBColor.namedColor("Label.disabledForeground", JBColor.GRAY)
-                        }
-                    }
-                }
-                return comp
-            }
-        })
+        pinnedTable!!.setDefaultRenderer(Any::class.java, PinnedPathCellRenderer())
 
         val pinnedToolbar = ToolbarDecorator.createDecorator(pinnedTable!!)
             .setAddAction { addPinnedFolder() }
@@ -319,6 +296,47 @@ class StickyProjectConfigurable(
             val pid = PluginId.getId(it)
             PluginManagerCore.getPlugin(pid) != null && !PluginManagerCore.isDisabled(pid)
         }
+
+    private inner class PinnedPathCellRenderer : javax.swing.table.DefaultTableCellRenderer() {
+        private var pathExistenceCache: Map<String, Boolean> = emptyMap()
+
+        init {
+            pinnedTableModel?.addTableModelListener { recalculate() }
+            recalculate()
+        }
+
+        private fun recalculate() {
+            val items = pinnedTableModel?.items ?: return
+            val basePath = project.basePath
+            pathExistenceCache = if (basePath != null) {
+                items.associate { item ->
+                    item.path to (PathValidator.validatePath(basePath, item.path) != null &&
+                        File(basePath, item.path.trimEnd('/')).exists())
+                }
+            } else {
+                emptyMap()
+            }
+        }
+
+        override fun getTableCellRendererComponent(
+            table: javax.swing.JTable, value: Any?, isSelected: Boolean, hasFocus: Boolean, row: Int, column: Int
+        ): Component {
+            val comp = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+            (comp as? JComponent)?.putClientProperty("html.disable", true)
+            if (!isSelected) {
+                val item = pinnedTableModel?.items?.getOrNull(row)
+                if (item != null) {
+                    val pathExists = pathExistenceCache[item.path] ?: false
+                    foreground = if (pathExists) {
+                        JBColor.namedColor("Label.foreground", JBColor.foreground())
+                    } else {
+                        JBColor.namedColor("Label.disabledForeground", JBColor.GRAY)
+                    }
+                }
+            }
+            return comp
+        }
+    }
 
     private fun buildStickyLinesInfoText(limit: Int): String {
         val limitInfo = if (limit < 0) "unknown" else "$limit"
@@ -574,6 +592,7 @@ class StickyProjectConfigurable(
         }
         private val folderIcon = UIManager.getIcon("FileView.directoryIcon")
         private var nestedPaths: Set<String> = emptySet()
+        private var pathExistenceCache: Map<String, Boolean> = emptyMap()
 
         init {
             model.addListDataListener(object : ListDataListener {
@@ -587,6 +606,15 @@ class StickyProjectConfigurable(
         private fun recalculate() {
             val paths = (0 until model.size).map { model.getElementAt(it) }
             nestedPaths = PathUtils.calculateNestedPaths(paths)
+
+            val basePath = project.basePath
+            pathExistenceCache = if (basePath != null) {
+                paths.associateWith { path ->
+                    SecurePathValidator.validatePath(basePath, path)?.let { File(it).exists() } ?: false
+                }
+            } else {
+                emptyMap()
+            }
         }
 
         override fun getListCellRendererComponent(
@@ -600,12 +628,7 @@ class StickyProjectConfigurable(
             label.icon = folderIcon
             label.border = JBUI.Borders.empty(2, 4)
 
-            val basePath = project.basePath
-            val pathExists = if (basePath != null && value != null) {
-                SecurePathValidator.validatePath(basePath, value)?.let { File(it).exists() } ?: false
-            } else {
-                false
-            }
+            val pathExists = value?.let { pathExistenceCache[it] } ?: false
 
             val isNested = value?.let { nestedPaths.contains(it) } == true
 
