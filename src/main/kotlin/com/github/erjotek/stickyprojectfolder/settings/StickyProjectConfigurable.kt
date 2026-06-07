@@ -316,7 +316,7 @@ class StickyProjectConfigurable(
     private fun isPluginEnabled(id: String): Boolean =
         id.split('|').any {
             val pid = PluginId.getId(it)
-            PluginManager.getInstance().findEnabledPlugin(pid) != null
+            PluginManager.isPluginInstalled(pid)
         }
 
     private fun buildStickyLinesInfoText(limit: Int): String {
