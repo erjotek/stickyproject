@@ -1,7 +1,7 @@
 package com.github.erjotek.stickyprojectfolder.settings
 
 import com.intellij.icons.AllIcons
-import com.intellij.ide.plugins.PluginManager
+import com.intellij.lang.Language
 import com.intellij.openapi.editor.ex.EditorSettingsExternalizable
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.fileChooser.FileChooser
@@ -314,11 +314,22 @@ class StickyProjectConfigurable(
         return "<html><table cellpadding='1'>$rows</table></html>"
     }
 
-    private fun isPluginEnabled(id: String): Boolean =
-        id.split('|').any {
-            val pid = PluginId.getId(it)
-            PluginManager.getInstance().findEnabledPlugin(pid) != null
+    private fun isPluginEnabled(id: String): Boolean {
+        val langMap = mapOf(
+            "com.jetbrains.php" to listOf("PHP"),
+            "JavaScript" to listOf("JavaScript", "TypeScript"),
+            "org.jetbrains.plugins.vue" to listOf("Vue"),
+            "com.intellij.java" to listOf("JAVA"),
+            "org.jetbrains.kotlin" to listOf("kotlin"),
+            "Pythonid" to listOf("Python"),
+            "PythonCore" to listOf("Python"),
+            "com.intellij.clion" to listOf("ObjectiveC", "C++"),
+            "org.jetbrains.plugins.clion.radler" to listOf("ObjectiveC", "C++")
+        )
+        return id.split('|').any { part ->
+            langMap[part]?.any { Language.findLanguageByID(it) != null } ?: false
         }
+    }
 
     private fun buildStickyLinesInfoText(limit: Int): String {
         val limitInfo = if (limit < 0) "unknown" else "$limit"
