@@ -326,9 +326,11 @@ class PinnedFooterComponent(
             try {
                 val data = transferable.getTransferData(DataFlavor.javaFileListFlavor)
                 if (data is List<*>) {
+                    val lfs = LocalFileSystem.getInstance()
+                    val psiManager = PsiManager.getInstance(project)
                     for (file in data.filterIsInstance<java.io.File>()) {
-                        val vf = LocalFileSystem.getInstance().findFileByIoFile(file) ?: continue
-                        val psi = if (vf.isDirectory) PsiManager.getInstance(project).findDirectory(vf) else PsiManager.getInstance(project).findFile(vf)
+                        val vf = lfs.findFileByIoFile(file) ?: continue
+                        val psi = if (vf.isDirectory) psiManager.findDirectory(vf) else psiManager.findFile(vf)
                         if (psi != null) elements.add(psi)
                     }
                 }
