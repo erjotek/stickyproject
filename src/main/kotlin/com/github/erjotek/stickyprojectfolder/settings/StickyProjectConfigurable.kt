@@ -23,7 +23,6 @@ import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
-import com.github.erjotek.stickyprojectfolder.util.PathValidator as SecurePathValidator
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
@@ -403,7 +402,7 @@ class StickyProjectConfigurable(
             val basePath = project.basePath ?: return@chooseFile
             val selectedPath = selectedFile.path
 
-            var relativePath = SecurePathValidator.getValidatedRelativePath(basePath, selectedPath)
+            var relativePath = PathValidator.getValidatedRelativePath(basePath, selectedPath)
             if (relativePath != null) {
                 if (relativePath.isNotEmpty() && !relativePath.endsWith("/")) {
                     relativePath += "/"
@@ -478,7 +477,7 @@ class StickyProjectConfigurable(
         return excludedRoots
             .mapNotNull { root ->
                 val path = root.path
-                val relativePath = SecurePathValidator.getValidatedRelativePath(basePath, path)
+                val relativePath = PathValidator.getValidatedRelativePath(basePath, path)
                 if (relativePath != null) {
                     var finalPath = relativePath
                     if (finalPath.isNotEmpty() && !finalPath.endsWith("/")) {
@@ -602,7 +601,7 @@ class StickyProjectConfigurable(
 
             val basePath = project.basePath
             val pathExists = if (basePath != null && value != null) {
-                SecurePathValidator.validatePath(basePath, value)?.let { File(it).exists() } ?: false
+                PathValidator.validatePath(basePath, value)?.let { File(it).exists() } ?: false
             } else {
                 false
             }
