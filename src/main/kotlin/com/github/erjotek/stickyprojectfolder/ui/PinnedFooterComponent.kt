@@ -145,8 +145,8 @@ class PinnedFooterComponent(
         pinnedItems = settings.state.pinnedFolders.mapNotNull { item ->
             val fullPath = "$basePath/${item.path.trimEnd('/')}"
             val file = File(fullPath)
-            if (!file.exists()) return@mapNotNull null
-            val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file)
+            // refresh, which is a slow op banned on the EDT; update() runs on EDT on every scroll.
+            val virtualFile = LocalFileSystem.getInstance().findFileByIoFile(file)
                 ?: return@mapNotNull null
 
             val fileColor = ApplicationManager.getApplication().runReadAction(Computable {
