@@ -2,7 +2,6 @@ package com.github.erjotek.stickyprojectfolder.pinned
 
 import com.github.erjotek.stickyprojectfolder.ui.PinnedFooterComponent
 import com.intellij.ide.projectView.ProjectView
-import com.intellij.ide.projectView.impl.AbstractProjectViewPane
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.util.Computable
@@ -13,11 +12,9 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.github.erjotek.stickyprojectfolder.util.TreeContextResolver
 import com.intellij.psi.PsiManager
 import com.intellij.util.ui.tree.TreeUtil
-import java.awt.Component
-import java.awt.Container
-import java.awt.KeyboardFocusManager
 import java.awt.event.AdjustmentListener
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
@@ -72,7 +69,7 @@ class PinnedFoldersManager(private val project: Project) : Disposable {
         val projectView = ProjectView.getInstance(project)
         val pane = projectView.currentProjectViewPane
 
-        val context = resolveTreeContext(pane)
+        val context = TreeContextResolver.resolve(project, pane)
         if (context == null) return
 
         val currentTree = context.tree
@@ -112,55 +109,6 @@ class PinnedFoldersManager(private val project: Project) : Disposable {
         installListeners(sp)
     }
     
-    // ... Copy-paste resolveTreeContext helpers from StickyScrollManager ...
-    // To avoid duplication I should have shared them, but for speed I'll replicate relevant parts roughly.
-    private data class TreeContext(val tree: JTree, val scrollPane: JScrollPane)
-    
-    private fun resolveTreeContext(pane: AbstractProjectViewPane?): TreeContext? {
-        fun toContext(tree: JTree): TreeContext? {
-            val sp = SwingUtilities.getAncestorOfClass(JScrollPane::class.java, tree) as? JScrollPane ?: return null
-            return TreeContext(tree, sp)
-        }
-
-        resolveFocusedProjectViewTree()?.let { focusedTree ->
-            toContext(focusedTree)?.let { return it }
-        }
-
-        val treeFromPane = pane?.tree
-        if (treeFromPane != null && treeFromPane.isShowing) {
-            toContext(treeFromPane)?.let { return it }
-        }
-
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW) ?: return null
-        val treeFromToolWindow = findTree(toolWindow.component) ?: return null
-        return toContext(treeFromToolWindow)
-    }
-
-    private fun resolveFocusedProjectViewTree(): JTree? {
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW) ?: return null
-        val toolWindowComponent = toolWindow.component
-
-        val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner ?: return null
-        if (!SwingUtilities.isDescendingFrom(focusOwner, toolWindowComponent)) return null
-
-        return when (focusOwner) {
-            is JTree -> focusOwner
-            else -> SwingUtilities.getAncestorOfClass(JTree::class.java, focusOwner) as? JTree
-        }
-    }
-
-    private fun findTree(component: Component?): JTree? {
-        if (component == null) return null
-        if (component is JTree && component.isShowing) return component
-        if (component is Container) {
-            for (child in component.components) {
-                val tree = findTree(child)
-                if (tree != null) return tree
-            }
-        }
-        return null
-    }
-
     private fun installListeners(sp: JScrollPane) {
         if (adjustmentListener == null) {
             val updateAction = Runnable { 
