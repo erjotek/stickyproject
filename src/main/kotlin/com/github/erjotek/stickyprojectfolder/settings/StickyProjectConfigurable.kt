@@ -2,6 +2,7 @@ package com.github.erjotek.stickyprojectfolder.settings
 
 import com.intellij.icons.AllIcons
 import com.intellij.ide.plugins.PluginManager
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.editor.ex.EditorSettingsExternalizable
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.fileChooser.FileChooser
@@ -317,7 +318,7 @@ class StickyProjectConfigurable(
     private fun isPluginEnabled(id: String): Boolean =
         id.split('|').any {
             val pid = PluginId.getId(it)
-            PluginManager.getInstance().findEnabledPlugin(pid) != null
+            PluginManager.isPluginInstalled(pid) && !PluginManagerCore.isDisabled(pid)
         }
 
     private fun buildStickyLinesInfoText(limit: Int): String {

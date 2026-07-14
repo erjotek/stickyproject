@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Performance** — large trees and frequent redraws do less repeated work.
+- **Preparing for 2026.2** 
+
+### Fixed
+
+- Fixed a slow-operation-on-EDT warning during sticky rendering.
+- Replaced the internal API call.
+
+### Removed
+
+- Removed duplicated Project View tree-resolution logic.
+
 ## [1.2.6] - 2026-05-11
 
 ### Added
