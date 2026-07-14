@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-07-14
+
 ### Changed
 
 - **Performance** — large trees and frequent redraws do less repeated work.
