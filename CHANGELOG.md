@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-07-20
+
 ### Fixed
 
 - Sticky Editor lines: PHP `switch` and `match` blocks are now recognized correctly (previously not detected).
@@ -138,7 +140,8 @@
 - Added ability to set limits.
 - Added clickable sticky elements.
 
-[Unreleased]: https://github.com/erjotek/stickyproject/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/erjotek/stickyproject/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/erjotek/stickyproject/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/erjotek/stickyproject/compare/v1.2.6...v1.3.1
 [1.2.6]: https://github.com/erjotek/stickyproject/compare/v1.0.3...v1.2.6
 [1.0.3]: https://github.com/erjotek/stickyproject/compare/v0.9.17...v1.0.3
