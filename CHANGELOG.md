@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Sticky Editor lines: PHP `switch` and `match` blocks are now recognized correctly (previously not detected).
+- Sticky Editor lines: PHP namespaces now show the full namespace path (e.g. `App\Classes\Fxiers\Actions`) instead of only the last segment Actions.
+
 ## [1.3.1] - 2026-07-14
 
 ### Changed
@@ -133,7 +138,8 @@
 - Added ability to set limits.
 - Added clickable sticky elements.
 
-[Unreleased]: https://github.com/erjotek/stickyproject/compare/v1.2.6...HEAD
+[Unreleased]: https://github.com/erjotek/stickyproject/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/erjotek/stickyproject/compare/v1.2.6...v1.3.1
 [1.2.6]: https://github.com/erjotek/stickyproject/compare/v1.0.3...v1.2.6
 [1.0.3]: https://github.com/erjotek/stickyproject/compare/v0.9.17...v1.0.3
 [0.9.17]: https://github.com/erjotek/stickyproject/compare/v0.9.12...v0.9.17

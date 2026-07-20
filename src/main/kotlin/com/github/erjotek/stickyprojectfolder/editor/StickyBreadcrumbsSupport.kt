@@ -61,6 +61,12 @@ internal fun invokeNoArg(target: Any, methodName: String): Any? = runCatching {
 
 internal fun labelFor(element: PsiElement, kind: StickyKind): String {
     if (kind == StickyKind.ELSE) return "else"
+    if (kind == StickyKind.NAMESPACE) {
+        runCatching {
+            val fqnMethod = findNoArgMethod(element.javaClass, "getFQN")
+            (fqnMethod?.invoke(element) as? String)?.removePrefix("\\")?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+    }
     if (kind == StickyKind.CLASS_OR_FUNCTION || kind == StickyKind.NAMESPACE) {
         (element as? PsiNamedElement)?.name?.takeIf { it.isNotBlank() }?.let { return it }
         runCatching {
