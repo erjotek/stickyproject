@@ -42,9 +42,9 @@ Go to **Settings/Preferences | Tools | Sticky Project Folder** to configure:
 ### Preview
 ![Sticky scroll preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/sticky-scroll.gif)
 
-![Sticky collapse preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/auto-collapse.gif)
+<img src="https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/auto-collapse.gif" alt="Sticky collapse preview" width="49%"> <img src="https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/pinned-folders.gif" alt="Pinned folders preview" width="49%">
 
-![Pinned folders preview](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/pinned-folders.gif)
+![Sticky editor lines](https://raw.githubusercontent.com/erjotek/stickyproject/main/.github/readme/sticky-if.gif)
 
 <!-- Plugin description end -->
 
