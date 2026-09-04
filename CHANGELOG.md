@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Compatibility extended to 2026.3 (build 263.*).
+
+### Fixed
+
+- Sticky bars (project view header and pinned footer) no longer look transparent under themes whose tree/file colors carry an alpha channel.
+- Pinned folders no longer resolve their paths on the EDT — removes the "slow operation may freeze UI" warning while scrolling the project view.
+
 ## [1.3.2] - 2026-07-20
 
 ### Fixed

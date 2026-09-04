@@ -757,13 +757,13 @@ class StickyHeaderComponent(
 
         val virtualFile = resolveVirtualFileForPainting(node)
 
-        val defaultBg = tree.background ?: UIUtil.getTreeBackground()
-        
+        val defaultBg = stickyFillColor(tree)
+
         val bgColor = if (virtualFile != null) {
             val cacheKey = virtualFile.path
             synchronized(virtualFileCacheLock) {
                 if (colorCache.containsKey(cacheKey)) {
-                    colorCache[cacheKey] ?: defaultBg
+                    stickyFillColor(tree, colorCache[cacheKey])
                 } else {
                     if (!colorLoading.contains(cacheKey)) {
                         colorLoading.add(cacheKey)

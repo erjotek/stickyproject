@@ -1,5 +1,6 @@
 package com.github.erjotek.stickyprojectfolder.ui
 
+import com.github.erjotek.stickyprojectfolder.settings.PinnedFolderItem
 import com.github.erjotek.stickyprojectfolder.settings.PinnedFoldersSettings
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
@@ -44,6 +45,10 @@ class PinnedFooterComponent(
     private var dragAutoScrollTimer: Timer? = null
     private var dragAutoScrollDirection: Int = 0
 
+    private var resolvedKey: List<String>? = null
+    private var lastResolveMs = 0L
+    private var resolving = false
+
     data class PinnedItemRenderData(
         val item: com.github.erjotek.stickyprojectfolder.settings.PinnedFolderItem,
         val virtualFile: VirtualFile,
@@ -52,6 +57,7 @@ class PinnedFooterComponent(
 
     companion object {
         private val LOG = Logger.getInstance(PinnedFooterComponent::class.java)
+        private const val RESOLVE_RETRY_MS = 1000L
     }
 
     init {
@@ -141,28 +147,55 @@ class PinnedFooterComponent(
     fun update() {
         val settings = PinnedFoldersSettings.getInstance(project)
         val basePath = project.basePath ?: return
+        val items = settings.state.pinnedFolders.toList()
+        val key = items.map { it.path }
 
-        pinnedItems = settings.state.pinnedFolders.mapNotNull { item ->
-            val fullPath = "$basePath/${item.path.trimEnd('/')}"
-            val file = File(fullPath)
-            // refresh, which is a slow op banned on the EDT; update() runs on EDT on every scroll.
-            val virtualFile = LocalFileSystem.getInstance().findFileByIoFile(file)
-                ?: return@mapNotNull null
+        val stale = key != resolvedKey ||
+            pinnedItems.any { !it.virtualFile.isValid } ||
+            (pinnedItems.size < items.size && System.currentTimeMillis() - lastResolveMs > RESOLVE_RETRY_MS)
 
-            val fileColor = ApplicationManager.getApplication().runReadAction(Computable {
-                try {
-                    val colorManager = FileColorManager.getInstance(project)
-                    if (colorManager.isEnabled && colorManager.isEnabledForProjectView) {
-                        colorManager.getFileColor(virtualFile)
-                    } else null
-                } catch (e: Exception) {
-                    LOG.warn("Failed to get file color for ${item.path}", e)
-                    null
-                }
-            })
-            PinnedItemRenderData(item, virtualFile, fileColor)
+        if (stale && !resolving) {
+            resolvedKey = key
+            lastResolveMs = System.currentTimeMillis()
+            resolving = true
+            resolvePinnedItems(items, basePath)
         }
 
+        applyPreferredSize()
+    }
+
+    private fun resolvePinnedItems(items: List<PinnedFolderItem>, basePath: String) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val resolved = ApplicationManager.getApplication().runReadAction(Computable {
+                items.mapNotNull { item ->
+                    val file = File("$basePath/${item.path.trimEnd('/')}")
+                    val virtualFile = LocalFileSystem.getInstance().findFileByIoFile(file)
+                        ?: return@mapNotNull null
+
+                    val fileColor = try {
+                        val colorManager = FileColorManager.getInstance(project)
+                        if (colorManager.isEnabled && colorManager.isEnabledForProjectView) {
+                            colorManager.getFileColor(virtualFile)
+                        } else null
+                    } catch (e: Exception) {
+                        LOG.warn("Failed to get file color for ${item.path}", e)
+                        null
+                    }
+                    PinnedItemRenderData(item, virtualFile, fileColor)
+                }
+            })
+
+            ApplicationManager.getApplication().invokeLater({
+                resolving = false
+                if (!project.isDisposed) {
+                    pinnedItems = resolved
+                    applyPreferredSize()
+                }
+            }, project.disposed)
+        }
+    }
+
+    private fun applyPreferredSize() {
         val separatorHeight = if (pinnedItems.isNotEmpty()) JBUI.scale(1) else 0
         val newHeight = pinnedItems.size * getEffectiveRowHeight() + separatorHeight
         if (preferredSize.height != newHeight) {
@@ -171,7 +204,7 @@ class PinnedFooterComponent(
         }
         repaint()
     }
-    
+
     private fun getEffectiveRowHeight(): Int {
         return if (tree.rowHeight > 0) tree.rowHeight else rowHeight
     }
@@ -372,10 +405,8 @@ class PinnedFooterComponent(
 
                 // Background
                 val isHovered = i == hoverIndex
-                val bg = tree.background ?: UIUtil.getTreeBackground()
-                val fileColor = item.cachedColor
 
-                g2.color = fileColor ?: bg
+                g2.color = stickyFillColor(tree, item.cachedColor)
                 g2.fillRect(0, y, effectiveWidth, rh)
 
                 if (isHovered) {
