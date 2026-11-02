@@ -7,6 +7,7 @@
 ### Changed
 
 - Compatibility extended to 2026.3 (build 263.*).
+- Updated dependencies
 
 ### Fixed
 
