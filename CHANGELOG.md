@@ -152,16 +152,16 @@
 - Added ability to set limits.
 - Added clickable sticky elements.
 
-[Unreleased]: https://github.com/erjotek/stickyproject/compare/v1.5.1...HEAD
-[1.5.1]: https://github.com/erjotek/stickyproject/compare/v1.3.2...v1.5.1
-[1.3.2]: https://github.com/erjotek/stickyproject/compare/v1.3.1...v1.3.2
-[1.3.1]: https://github.com/erjotek/stickyproject/compare/v1.2.6...v1.3.1
-[1.2.6]: https://github.com/erjotek/stickyproject/compare/v1.0.3...v1.2.6
-[1.0.3]: https://github.com/erjotek/stickyproject/compare/v0.9.17...v1.0.3
-[0.9.17]: https://github.com/erjotek/stickyproject/compare/v0.9.12...v0.9.17
-[0.9.12]: https://github.com/erjotek/stickyproject/compare/v0.9.6...v0.9.12
-[0.9.6]: https://github.com/erjotek/stickyproject/compare/v0.9.1...v0.9.6
-[0.9.1]: https://github.com/erjotek/stickyproject/compare/v0.8.2...v0.9.1
-[0.8.2]: https://github.com/erjotek/stickyproject/compare/v0.7.34...v0.8.2
-[0.7.34]: https://github.com/erjotek/stickyproject/compare/v0.6.7...v0.7.34
-[0.6.7]: https://github.com/erjotek/stickyproject/commits/v0.6.7
+[Unreleased]: https://github.com/erjotek/stickyproject/compare/1.5.1...HEAD
+[1.5.1]: https://github.com/erjotek/stickyproject/compare/1.3.2...1.5.1
+[1.3.2]: https://github.com/erjotek/stickyproject/compare/1.3.1...1.3.2
+[1.3.1]: https://github.com/erjotek/stickyproject/compare/1.2.6...1.3.1
+[1.2.6]: https://github.com/erjotek/stickyproject/compare/1.0.3...1.2.6
+[1.0.3]: https://github.com/erjotek/stickyproject/compare/0.9.17...1.0.3
+[0.9.17]: https://github.com/erjotek/stickyproject/compare/0.9.12...0.9.17
+[0.9.12]: https://github.com/erjotek/stickyproject/compare/0.9.6...0.9.12
+[0.9.6]: https://github.com/erjotek/stickyproject/compare/0.9.1...0.9.6
+[0.9.1]: https://github.com/erjotek/stickyproject/compare/0.8.2...0.9.1
+[0.8.2]: https://github.com/erjotek/stickyproject/compare/0.7.34...0.8.2
+[0.7.34]: https://github.com/erjotek/stickyproject/compare/0.6.7...0.7.34
+[0.6.7]: https://github.com/erjotek/stickyproject/commits/0.6.7
